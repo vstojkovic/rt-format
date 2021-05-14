@@ -66,7 +66,7 @@ where
                         (?P<repr>\#)?
                         (?P<pad>0)?
                         (?P<width>\d+)?
-                        (?P<precision>\.\d+)?
+                        (?:\.(?P<precision>\d+))?
                         (?P<format>[?oxXbeE])?
                     )?
                 \}

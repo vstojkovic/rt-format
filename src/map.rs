@@ -16,3 +16,11 @@ where
         <HashMap<K, V>>::get(self, key)
     }
 }
+
+pub struct NoMap;
+
+impl<Q, V> Map<Q, V> for NoMap where Q: Hash + Eq + ?Sized {
+    fn get(&self, _: &Q) -> Option<&V> {
+        None
+    }
+}
