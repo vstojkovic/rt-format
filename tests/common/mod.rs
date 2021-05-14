@@ -1,7 +1,10 @@
+use std::cmp::PartialEq;
 use std::fmt;
 
 use rt_format::{Format, FormattableValue, Specifier};
 
+#[derive(Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum Variant {
     Int(i32),
     Float(f64)
