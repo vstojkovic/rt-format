@@ -29,10 +29,7 @@ impl FormattableValue for Variant {
     }
 
     fn fmt_debug(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Int(val) => fmt::Debug::fmt(&val, f),
-            Self::Float(val) => fmt::Debug::fmt(&val, f),
-        }
+        fmt::Debug::fmt(self, f)
     }
 
     fn fmt_octal(&self, f: &mut fmt::Formatter) -> fmt::Result {

@@ -66,6 +66,11 @@ fn format_display() {
 }
 
 #[test]
+fn format_debug() {
+    assert_eq!("Int(42)", fmt_args("{:?}", &[Variant::Int(42)]));
+}
+
+#[test]
 fn format_octal() {
     assert_eq!("52", fmt_args("{:o}", &[Variant::Int(42)]));
 }
