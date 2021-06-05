@@ -11,7 +11,7 @@ macro_rules! generate_code {
                     $variant $({ $($var_field: $var_type),+ })?
                 ),+ 
             }
-            generate_code!(@enum_ctor $type [] [$(($lit $variant $({$($var_field)+})?))+]);
+            generate_code!(@enum_try_from $type [] [$(($lit $variant $({$($var_field)+})?))+]);
         )+
         generate_code!(@formatting_traits [] $([$($variant)+])+);
         generate_code!(@spec_struct $($field $type)+);
@@ -21,21 +21,22 @@ macro_rules! generate_code {
             )+
         );
     };
-    (@enum_ctor
+    (@enum_try_from
         $type:ident [$($munched:tt)*] [($lit:literal $variant:ident) $($tail:tt)*]
     ) => {
-        generate_code!(@enum_ctor $type [$($munched)* ($lit $variant)] [$($tail)*]);
+        generate_code!(@enum_try_from $type [$($munched)* ($lit $variant)] [$($tail)*]);
     };
-    (@enum_ctor
+    (@enum_try_from
         $type:ident [$($munched:tt)*] [($lit:literal $variant:ident $_:tt) $($tail:tt)*]
     ) => {
     };
-    (@enum_ctor
+    (@enum_try_from
         $type:ident [$(($lit:literal $variant:ident))+] []
     ) => {
-        impl $type {
-            fn from_capture(capture: Option<Match>) -> Result<Self, ()> {
-                match capture.map(|m| m.as_str()).unwrap_or("") {
+        impl TryFrom<&str> for $type {
+            type Error = ();
+            fn try_from(value: &str) -> Result<Self, Self::Error> {
+                match value.as_ref() {
                     $($lit => Ok($type::$variant),)+
                     _ => Err(())
                 }
@@ -73,16 +74,6 @@ macro_rules! generate_code {
             $(
                 pub $field: $type
             ),+
-        }
-
-        impl Specifier {
-            fn new(captures: &Captures) -> Specifier {
-                Specifier {
-                    $(
-                        $field: <$type>::from_capture(captures.name(stringify!($field))).unwrap()
-                    ),+
-                }
-            }
         }
     };
     (@arg_struct $($dim:tt)+) => {

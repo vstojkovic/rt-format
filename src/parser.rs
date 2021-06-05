@@ -1,7 +1,8 @@
-use regex::Captures;
+use regex::{Captures, Match};
+use std::convert::{TryFrom, TryInto};
 use std::slice::Iter;
 
-use crate::{Argument, FormattableValue, Segment, Specifier};
+use crate::{Align, Argument, Format, FormattableValue, Pad, Precision, Repr, Segment, Sign, Specifier, Width};
 use crate::map::Map;
 
 pub struct Parser<'p, V, M>
@@ -14,6 +15,58 @@ where
     positional: &'p [V],
     named: &'p M,
     positional_iter: Iter<'p, V>,
+}
+
+trait Parseable<'p, 'm, V, M>
+where
+    V: FormattableValue,
+    M: Map<str, V>,
+    Self: Sized
+{
+    fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()>;
+}
+
+impl<'p, 'm, V, M, T> Parseable<'p, 'm, V, M> for T
+where
+    V: FormattableValue,
+    M: Map<str, V>,
+    T: Sized + TryFrom<&'m str, Error = ()>
+{
+    fn parse(capture: Option<Match<'m>>, _: &mut Parser<'p, V, M>) -> Result<Self, ()> {
+        capture.map(|m| m.as_str()).unwrap_or("").try_into()
+    }
+}
+
+impl<'p, 'm, V, M> Parseable<'p, 'm, V, M> for Width
+where
+    V: FormattableValue,
+    M: Map<str, V>
+{
+    fn parse(capture: Option<Match<'m>>, _: &mut Parser<'p, V, M>) -> Result<Self, ()> {
+        match capture.map(|m| m.as_str()).unwrap_or("") {
+            "" => Ok(Width::Auto),
+            s@_ => match s.parse() {
+                Ok(width) => Ok(Width::AtLeast { width }),
+                Err(_) => Err(())
+            }
+        }
+    }
+}
+
+impl<'p, 'm, V, M> Parseable<'p, 'm, V, M> for Precision
+where
+    V: FormattableValue,
+    M: Map<str, V>
+{
+    fn parse(capture: Option<Match<'m>>, _: &mut Parser<'p, V, M>) -> Result<Self, ()> {
+        match capture.map(|m| m.as_str()).unwrap_or("") {
+            "" => Ok(Precision::Auto),
+            s@_ => match s.parse() {
+                Ok(precision) => Ok(Precision::Exactly { precision }),
+                Err(_) => Err(())
+            }
+        }
+    }
 }
 
 impl<'p, V, M> Parser<'p, V, M>
@@ -50,6 +103,18 @@ where
         }
     }
 
+    fn parse_specifier(&mut self, captures: &Captures) -> Specifier {
+        Specifier {
+            align: Align::parse(captures.name("align"), self).unwrap(),
+            sign: Sign::parse(captures.name("sign"), self).unwrap(),
+            repr: Repr::parse(captures.name("repr"), self).unwrap(),
+            pad: Pad::parse(captures.name("pad"), self).unwrap(),
+            width: Width::parse(captures.name("width"), self).unwrap(),
+            precision: Precision::parse(captures.name("precision"), self).unwrap(),
+            format: Format::parse(captures.name("format"), self).unwrap(),
+        }
+    }
+
     fn parse_argument(&mut self) -> Result<Segment<'p, V>, usize> {
         use regex::Regex;
         use lazy_static::lazy_static;
@@ -78,7 +143,7 @@ where
             Some(captures) => {
                 self.lookup_value(&captures)
                     .ok_or(())
-                    .and_then(|value| Argument::new(Specifier::new(&captures), value))
+                    .and_then(|value| Argument::new(self.parse_specifier(&captures), value))
                     .map(|arg| self.advance_and_return(captures.get(0).unwrap().end(), Segment::Argument(arg)))
                     .or_else(|_| self.error())
             }

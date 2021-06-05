@@ -5,8 +5,8 @@ pub mod map;
 pub mod parser;
 
 use paste::paste;
-use regex::{Captures, Match};
 use std::cmp::PartialEq;
+use std::convert::TryFrom;
 use std::fmt;
 
 use crate::map::Map;
@@ -53,30 +53,6 @@ generate_code! {
         "b" => Binary,
         "e" => LowerExp,
         "E" => UpperExp,
-    }
-}
-
-impl Width {
-    fn from_capture(capture: Option<Match>) -> Result<Self, ()> {
-        match capture.map(|m| m.as_str()).unwrap_or("") {
-            "" => Ok(Width::Auto),
-            s@_ => match s.parse() {
-                Ok(width) => Ok(Width::AtLeast { width }),
-                Err(_) => Err(())
-            }
-        }
-    }
-}
-
-impl Precision {
-    fn from_capture(capture: Option<Match>) -> Result<Self, ()> {
-        match capture.map(|m| m.as_str()).unwrap_or("") {
-            "" => Ok(Precision::Auto),
-            s@_ => match s.parse() {
-                Ok(precision) => Ok(Precision::Exactly { precision }),
-                Err(_) => Err(())
-            }
-        }
     }
 }
 
