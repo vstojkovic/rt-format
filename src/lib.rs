@@ -10,6 +10,7 @@ use std::convert::TryFrom;
 use std::fmt;
 
 use crate::map::Map;
+use crate::parser::ConvertToSize;
 
 generate_code! {
     align: Align {
@@ -67,7 +68,7 @@ pub struct Arguments<'a, V: FormattableValue> {
     pub segments: Vec<Segment<'a, V>>
 }
 
-impl<'a, V: FormattableValue> Arguments<'a, V> {
+impl<'a, V: FormattableValue + ConvertToSize<'a>> Arguments<'a, V> {
     pub fn parse<M>(format: &'a str, positional: &'a [V], named: &'a M) -> Result<Self, usize>
     where
         M: Map<str, V>

@@ -1,4 +1,5 @@
 use std::cmp::PartialEq;
+use std::convert::TryInto;
 use std::fmt;
 
 use rt_format::{Format, FormattableValue, Specifier};
@@ -71,6 +72,16 @@ impl FormattableValue for Variant {
         match self {
             Self::Int(val) => fmt::UpperExp::fmt(&val, f),
             Self::Float(val) => fmt::UpperExp::fmt(&val, f),
+        }
+    }
+}
+
+impl TryInto<usize> for &Variant {
+    type Error = ();
+    fn try_into(self) -> Result<usize, Self::Error> {
+        match self {
+            Variant::Int(val) => (*val).try_into().map_err(|_| ()),
+            Variant::Float(_) => Err(()),
         }
     }
 }

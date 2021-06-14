@@ -10,6 +10,14 @@ fn fmt_args(spec: &str, args: &[Variant]) -> String {
     format!("{}", Arguments::parse(spec, args, &NoMap).unwrap())
 }
 
+fn fmt_args_map(spec: &str, positional: &[Variant], named: &[(&str, Variant)]) -> String {
+    let mut map = HashMap::new();
+    for (key, value) in named {
+        map.insert(*key, value);
+    }
+    format!("{}", Arguments::parse(spec, positional, &map).unwrap())
+}
+
 #[test]
 fn align_left() {
     assert_eq!("#42    #", fmt_args("#{:<6}#", &[Variant::Int(42)]));
@@ -56,8 +64,38 @@ fn pad_zero() {
 }
 
 #[test]
-fn precision() {
+fn width_embedded() {
+    assert_eq!("#   42#", fmt_args("#{:5}#", &[Variant::Int(42)]));
+}
+
+#[test]
+fn width_by_index() {
+    assert_eq!("#   42#", fmt_args("#{:1$}#", &[Variant::Int(42), Variant::Int(5)]));
+}
+
+#[test]
+fn width_by_name() {
+    assert_eq!("#   42#", fmt_args_map("#{:arglebargle$}#", &[Variant::Int(42)], &[("arglebargle", Variant::Int(5))]));
+}
+
+#[test]
+fn precision_embedded() {
     assert_eq!("#42.04200#", fmt_args("#{:.5}#", &[Variant::Float(42.042)]));
+}
+
+#[test]
+fn precision_by_index() {
+    assert_eq!("#42.04200#", fmt_args("#{:.1$}#", &[Variant::Float(42.042), Variant::Int(5)]));
+}
+
+#[test]
+fn precision_by_name() {
+    assert_eq!("#42.04200#", fmt_args_map("#{:.arglebargle$}#", &[Variant::Float(42.042)], &[("arglebargle", Variant::Int(5))]));
+}
+
+#[test]
+fn precision_by_asterisk() {
+    assert_eq!("#42.04200#", fmt_args("#{:.*}#", &[Variant::Int(5), Variant::Float(42.042)]));
 }
 
 #[test]
@@ -102,10 +140,12 @@ fn format_upper_exp() {
 
 #[test]
 fn smoke_test() {
-    let mut map = HashMap::new();
-    map.insert("argle".to_string(), Variant::Int(-42));
     assert_eq!(
         "foo +21 # -42 # 0x2A 386 {10001} 42 bar",
-        format!("{}", Arguments::parse("foo {:+o} #{argle:^5}# {2:#X} {} {{{0:b}}} {:} bar", &[Variant::Int(17), Variant::Int(386), Variant::Int(42)], &map).unwrap())
+        fmt_args_map(
+            "foo {:+o} #{arglebargle:^5}# {2:#X} {} {{{0:b}}} {:} bar",
+            &[Variant::Int(17), Variant::Int(386), Variant::Int(42)],
+            &[("arglebargle", Variant::Int(-42))]
+        )
     );
 }

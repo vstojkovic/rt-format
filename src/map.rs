@@ -17,6 +17,16 @@ where
     }
 }
 
+impl<K, Q, V> Map<Q, V> for HashMap<K, &V>
+where
+    Q: Hash + Eq + ?Sized,
+    K: Borrow<Q> + Hash + Eq,
+{
+    fn get(&self, key: &Q) -> Option<&V> {
+        <HashMap<K, &V>>::get(self, key).map(|v| *v)
+    }
+}
+
 pub struct NoMap;
 
 impl<Q, V> Map<Q, V> for NoMap where Q: Hash + Eq + ?Sized {

@@ -5,9 +5,22 @@ use std::slice::Iter;
 use crate::{Align, Argument, Format, FormattableValue, Pad, Precision, Repr, Segment, Sign, Specifier, Width};
 use crate::map::Map;
 
+pub trait ConvertToSize<'s> {
+    fn convert(&'s self) -> Result<usize, ()>;
+}
+
+impl<'t, T: 't> ConvertToSize<'t> for T
+where
+    &'t T: TryInto<usize, Error = ()>
+{
+    fn convert(&'t self) -> Result<usize, ()> {
+        self.try_into()
+    }
+}
+
 pub struct Parser<'p, V, M>
 where
-    V: FormattableValue,
+    V: FormattableValue + ConvertToSize<'p>,
     M: Map<str, V>
 {
     unparsed: &'p str,
@@ -19,7 +32,7 @@ where
 
 trait Parseable<'p, 'm, V, M>
 where
-    V: FormattableValue,
+    V: FormattableValue + ConvertToSize<'p>,
     M: Map<str, V>,
     Self: Sized
 {
@@ -28,7 +41,7 @@ where
 
 impl<'p, 'm, V, M, T> Parseable<'p, 'm, V, M> for T
 where
-    V: FormattableValue,
+    V: FormattableValue + ConvertToSize<'p>,
     M: Map<str, V>,
     T: Sized + TryFrom<&'m str, Error = ()>
 {
@@ -37,41 +50,57 @@ where
     }
 }
 
-impl<'p, 'm, V, M> Parseable<'p, 'm, V, M> for Width
+fn parse_size<'p, 'm, V, M>(text: &str, parser: &Parser<'p, V, M>) -> Result<usize, ()>
 where
-    V: FormattableValue,
+    V: FormattableValue + ConvertToSize<'p>,
     M: Map<str, V>
 {
-    fn parse(capture: Option<Match<'m>>, _: &mut Parser<'p, V, M>) -> Result<Self, ()> {
+    if text.ends_with('$') {
+        let text = &text[..text.len()-1];
+        let value = if text.as_bytes()[0].is_ascii_digit() {
+            text.parse().ok().and_then(|idx| parser.lookup_value_by_index(idx))
+        } else {
+            parser.lookup_value_by_name(text)
+        };
+        value.ok_or(()).and_then(ConvertToSize::convert)
+    } else {
+        text.parse().map_err(|_| ())
+    }
+}
+
+impl<'p, 'm, V, M> Parseable<'p, 'm, V, M> for Width
+where
+    V: FormattableValue + ConvertToSize<'p>,
+    M: Map<str, V>
+{
+    fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()> {
         match capture.map(|m| m.as_str()).unwrap_or("") {
             "" => Ok(Width::Auto),
-            s@_ => match s.parse() {
-                Ok(width) => Ok(Width::AtLeast { width }),
-                Err(_) => Err(())
-            }
+            s@_ => parse_size(s, parser).map(|width| Width::AtLeast { width }),
         }
     }
 }
 
 impl<'p, 'm, V, M> Parseable<'p, 'm, V, M> for Precision
 where
-    V: FormattableValue,
+    V: FormattableValue + ConvertToSize<'p>,
     M: Map<str, V>
 {
-    fn parse(capture: Option<Match<'m>>, _: &mut Parser<'p, V, M>) -> Result<Self, ()> {
+    fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()> {
         match capture.map(|m| m.as_str()).unwrap_or("") {
             "" => Ok(Precision::Auto),
-            s@_ => match s.parse() {
-                Ok(precision) => Ok(Precision::Exactly { precision }),
-                Err(_) => Err(())
-            }
+            "*" => parser.next_value()
+                .ok_or(())
+                .and_then(ConvertToSize::convert)
+                .map(|precision| Precision::Exactly { precision }),
+            s@_ => parse_size(s, parser).map(|precision| Precision::Exactly { precision }),
         }
     }
 }
 
 impl<'p, V, M> Parser<'p, V, M>
 where
-    V: FormattableValue,
+    V: FormattableValue + ConvertToSize<'p>,
     M: Map<str, V>
 {
     pub fn new(format: &'p str, positional: &'p [V], named: &'p M) -> Self {
@@ -103,16 +132,16 @@ where
         }
     }
 
-    fn parse_specifier(&mut self, captures: &Captures) -> Specifier {
-        Specifier {
-            align: Align::parse(captures.name("align"), self).unwrap(),
-            sign: Sign::parse(captures.name("sign"), self).unwrap(),
-            repr: Repr::parse(captures.name("repr"), self).unwrap(),
-            pad: Pad::parse(captures.name("pad"), self).unwrap(),
-            width: Width::parse(captures.name("width"), self).unwrap(),
-            precision: Precision::parse(captures.name("precision"), self).unwrap(),
-            format: Format::parse(captures.name("format"), self).unwrap(),
-        }
+    fn parse_specifier(&mut self, captures: &Captures) -> Result<Specifier, ()> {
+        Ok(Specifier {
+            align: Align::parse(captures.name("align"), self)?,
+            sign: Sign::parse(captures.name("sign"), self)?,
+            repr: Repr::parse(captures.name("repr"), self)?,
+            pad: Pad::parse(captures.name("pad"), self)?,
+            width: Width::parse(captures.name("width"), self)?,
+            precision: Precision::parse(captures.name("precision"), self)?,
+            format: Format::parse(captures.name("format"), self)?,
+        })
     }
 
     fn parse_argument(&mut self) -> Result<Segment<'p, V>, usize> {
@@ -130,8 +159,12 @@ where
                         (?P<sign>\+)?
                         (?P<repr>\#)?
                         (?P<pad>0)?
-                        (?P<width>\d+)?
-                        (?:\.(?P<precision>\d+))?
+                        (?P<width>
+                            (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)
+                        )?
+                        (?:\.(?P<precision>
+                            (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)|\*
+                        ))?
                         (?P<format>[?oxXbeE])?
                     )?
                 \}
@@ -140,30 +173,44 @@ where
 
         match SPEC_RE.captures(self.unparsed) {
             None => self.error(),
-            Some(captures) => {
-                self.lookup_value(&captures)
-                    .ok_or(())
-                    .and_then(|value| Argument::new(self.parse_specifier(&captures), value))
-                    .map(|arg| self.advance_and_return(captures.get(0).unwrap().end(), Segment::Argument(arg)))
-                    .or_else(|_| self.error())
-            }
+            Some(captures) =>
+                match self.parse_specifier(&captures) {
+                    Ok(specifier) => self.lookup_value(&captures)
+                        .ok_or(())
+                        .and_then(|value| Argument::new(specifier, value))
+                        .map(|arg| self.advance_and_return(captures.get(0).unwrap().end(), Segment::Argument(arg)))
+                        .or_else(|_| self.error()),
+                    Err(_) => self.error()
+                }
         }
     }
 
     fn lookup_value(&mut self, captures: &Captures) -> Option<&'p V> {
         if let Some(idx) = captures.name("index") {
-            idx.as_str().parse::<usize>().ok().and_then(|idx| self.positional.get(idx))
+            idx.as_str().parse::<usize>().ok().and_then(|idx| self.lookup_value_by_index(idx))
         } else if let Some(name) = captures.name("name") {
-            self.named.get(name.as_str())
+            self.lookup_value_by_name(name.as_str())
         } else {
-            self.positional_iter.next()
+            self.next_value()
         }
+    }
+
+    fn next_value(&mut self) -> Option<&'p V> {
+        self.positional_iter.next()
+    }
+
+    fn lookup_value_by_index(&self, idx: usize) -> Option<&'p V> {
+        self.positional.get(idx)
+    }
+
+    fn lookup_value_by_name(&self, name: &str) -> Option<&'p V> {
+        self.named.get(name)
     }
 }
 
 impl<'p, V, M> Iterator for Parser<'p, V, M>
 where
-    V: FormattableValue,
+    V: FormattableValue + ConvertToSize<'p>,
     M: Map<str, V>
 {
     type Item = Result<Segment<'p, V>, usize>;

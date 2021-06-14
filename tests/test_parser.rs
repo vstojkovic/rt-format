@@ -60,3 +60,28 @@ fn missing_positional_arg() {
 fn missing_named_arg() {
     assert_eq!(Err(0), Arguments::parse("{arglebargle}", NO_ARGS, &NoMap));
 }
+
+#[test]
+fn missing_positional_width() {
+    assert_eq!(Err(0), Arguments::parse("{:1$}", &[Variant::Int(42)], &NoMap));
+}
+
+#[test]
+fn missing_named_width() {
+    assert_eq!(Err(0), Arguments::parse("{:arglebargle$}", &[Variant::Int(42)], &NoMap));
+}
+
+#[test]
+fn missing_positional_precision() {
+    assert_eq!(Err(0), Arguments::parse("{:.1$}", &[Variant::Int(42)], &NoMap));
+}
+
+#[test]
+fn missing_named_precision() {
+    assert_eq!(Err(0), Arguments::parse("{:.arglebargle$}", &[Variant::Int(42)], &NoMap));
+}
+
+#[test]
+fn missing_asterisk_precision() {
+    assert_eq!(Err(3), Arguments::parse("{} {0:.*}", &[Variant::Int(42)], &NoMap));
+}
