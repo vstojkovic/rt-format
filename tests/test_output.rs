@@ -31,22 +31,22 @@ fn sign_always() {
 }
 
 #[test]
-fn reprt_alt_octal() {
+fn repr_alt_octal() {
     assert_eq!("0o52", fmt_args("{:#o}", &[Variant::Int(42)]));
 }
 
 #[test]
-fn reprt_alt_lower_hex() {
+fn repr_alt_lower_hex() {
     assert_eq!("0x2a", fmt_args("{:#x}", &[Variant::Int(42)]));
 }
 
 #[test]
-fn reprt_alt_upper_hex() {
+fn repr_alt_upper_hex() {
     assert_eq!("0x2A", fmt_args("{:#X}", &[Variant::Int(42)]));
 }
 
 #[test]
-fn reprt_alt_binary() {
+fn repr_alt_binary() {
     assert_eq!("0b101010", fmt_args("{:#b}", &[Variant::Int(42)]));
 }
 
