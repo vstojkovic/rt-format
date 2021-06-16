@@ -9,7 +9,7 @@ macro_rules! generate_code {
             pub enum $type {
                 $(
                     $variant $({ $($var_field: $var_type),+ })?
-                ),+ 
+                ),+
             }
             generate_code!(@enum_try_from $type [] [$(($lit $variant $({$($var_field)+})?))+]);
         )+
@@ -79,8 +79,8 @@ macro_rules! generate_code {
     (@arg_struct $($dim:tt)+) => {
         #[derive(Debug, Copy, Clone, PartialEq)]
         pub struct Argument<'v, V: FormattableValue> {
-            pub specifier: Specifier, 
-            pub value: &'v V, 
+            pub specifier: Specifier,
+            pub value: &'v V,
             _private: ()
         }
 

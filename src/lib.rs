@@ -60,23 +60,26 @@ generate_code! {
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Segment<'s, V: FormattableValue> {
     Text(&'s str),
-    Argument(Argument<'s, V>)
+    Argument(Argument<'s, V>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Arguments<'a, V: FormattableValue> {
-    pub segments: Vec<Segment<'a, V>>
+    pub segments: Vec<Segment<'a, V>>,
 }
 
 impl<'a, V: FormattableValue + ConvertToSize<'a>> Arguments<'a, V> {
     pub fn parse<M>(format: &'a str, positional: &'a [V], named: &'a M) -> Result<Self, usize>
     where
-        M: Map<str, V>
+        M: Map<str, V>,
     {
         use parser::Parser;
 
-        let segments: Result<Vec<Segment<'a, V>>, usize> = Parser::new(format, positional, named).collect();
-        Ok(Arguments { segments: segments? })
+        let segments: Result<Vec<Segment<'a, V>>, usize> =
+            Parser::new(format, positional, named).collect();
+        Ok(Arguments {
+            segments: segments?,
+        })
     }
 }
 
@@ -85,7 +88,7 @@ impl<'a, V: FormattableValue> fmt::Display for Arguments<'a, V> {
         for segment in self.segments.iter() {
             match segment {
                 Segment::Text(text) => f.write_str(text)?,
-                Segment::Argument(arg) => arg.fmt(f)?
+                Segment::Argument(arg) => arg.fmt(f)?,
             }
         }
         Ok(())

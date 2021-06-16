@@ -2,8 +2,11 @@ use regex::{Captures, Match};
 use std::convert::{TryFrom, TryInto};
 use std::slice::Iter;
 
-use crate::{Align, Argument, Format, FormattableValue, Pad, Precision, Repr, Segment, Sign, Specifier, Width};
 use crate::map::Map;
+use crate::{
+    Align, Argument, Format, FormattableValue, Pad, Precision, Repr, Segment, Sign, Specifier,
+    Width,
+};
 
 pub trait ConvertToSize<'s> {
     fn convert(&'s self) -> Result<usize, ()>;
@@ -11,7 +14,7 @@ pub trait ConvertToSize<'s> {
 
 impl<'t, T: 't> ConvertToSize<'t> for T
 where
-    &'t T: TryInto<usize, Error = ()>
+    &'t T: TryInto<usize, Error = ()>,
 {
     fn convert(&'t self) -> Result<usize, ()> {
         self.try_into()
@@ -21,7 +24,7 @@ where
 pub struct Parser<'p, V, M>
 where
     V: FormattableValue + ConvertToSize<'p>,
-    M: Map<str, V>
+    M: Map<str, V>,
 {
     unparsed: &'p str,
     parsed_len: usize,
@@ -34,7 +37,7 @@ trait Parseable<'p, 'm, V, M>
 where
     V: FormattableValue + ConvertToSize<'p>,
     M: Map<str, V>,
-    Self: Sized
+    Self: Sized,
 {
     fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()>;
 }
@@ -43,7 +46,7 @@ impl<'p, 'm, V, M, T> Parseable<'p, 'm, V, M> for T
 where
     V: FormattableValue + ConvertToSize<'p>,
     M: Map<str, V>,
-    T: Sized + TryFrom<&'m str, Error = ()>
+    T: Sized + TryFrom<&'m str, Error = ()>,
 {
     fn parse(capture: Option<Match<'m>>, _: &mut Parser<'p, V, M>) -> Result<Self, ()> {
         capture.map(|m| m.as_str()).unwrap_or("").try_into()
@@ -53,12 +56,14 @@ where
 fn parse_size<'p, 'm, V, M>(text: &str, parser: &Parser<'p, V, M>) -> Result<usize, ()>
 where
     V: FormattableValue + ConvertToSize<'p>,
-    M: Map<str, V>
+    M: Map<str, V>,
 {
     if text.ends_with('$') {
-        let text = &text[..text.len()-1];
+        let text = &text[..text.len() - 1];
         let value = if text.as_bytes()[0].is_ascii_digit() {
-            text.parse().ok().and_then(|idx| parser.lookup_value_by_index(idx))
+            text.parse()
+                .ok()
+                .and_then(|idx| parser.lookup_value_by_index(idx))
         } else {
             parser.lookup_value_by_name(text)
         };
@@ -71,12 +76,12 @@ where
 impl<'p, 'm, V, M> Parseable<'p, 'm, V, M> for Width
 where
     V: FormattableValue + ConvertToSize<'p>,
-    M: Map<str, V>
+    M: Map<str, V>,
 {
     fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()> {
         match capture.map(|m| m.as_str()).unwrap_or("") {
             "" => Ok(Width::Auto),
-            s@_ => parse_size(s, parser).map(|width| Width::AtLeast { width }),
+            s @ _ => parse_size(s, parser).map(|width| Width::AtLeast { width }),
         }
     }
 }
@@ -84,16 +89,17 @@ where
 impl<'p, 'm, V, M> Parseable<'p, 'm, V, M> for Precision
 where
     V: FormattableValue + ConvertToSize<'p>,
-    M: Map<str, V>
+    M: Map<str, V>,
 {
     fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()> {
         match capture.map(|m| m.as_str()).unwrap_or("") {
             "" => Ok(Precision::Auto),
-            "*" => parser.next_value()
+            "*" => parser
+                .next_value()
                 .ok_or(())
                 .and_then(ConvertToSize::convert)
                 .map(|precision| Precision::Exactly { precision }),
-            s@_ => parse_size(s, parser).map(|precision| Precision::Exactly { precision }),
+            s @ _ => parse_size(s, parser).map(|precision| Precision::Exactly { precision }),
         }
     }
 }
@@ -101,10 +107,16 @@ where
 impl<'p, V, M> Parser<'p, V, M>
 where
     V: FormattableValue + ConvertToSize<'p>,
-    M: Map<str, V>
+    M: Map<str, V>,
 {
     pub fn new(format: &'p str, positional: &'p [V], named: &'p M) -> Self {
-        Parser { unparsed: format, parsed_len: 0, positional, named, positional_iter: positional.iter() }
+        Parser {
+            unparsed: format,
+            parsed_len: 0,
+            positional,
+            named,
+            positional_iter: positional.iter(),
+        }
     }
 
     fn advance_and_return<T>(&mut self, advance_by: usize, result: T) -> T {
@@ -145,49 +157,60 @@ where
     }
 
     fn parse_argument(&mut self) -> Result<Segment<'p, V>, usize> {
-        use regex::Regex;
         use lazy_static::lazy_static;
-    
+        use regex::Regex;
+
         lazy_static! {
-            static ref SPEC_RE: Regex = Regex::new(r"(?x)
-                ^
-                \{
-                    (?:(?P<index>\d+)|(?P<name>[[:alpha:]][[:alnum:]]*))?
-                    (?:
-                        :
-                        (?P<align>[<^>])?
-                        (?P<sign>\+)?
-                        (?P<repr>\#)?
-                        (?P<pad>0)?
-                        (?P<width>
-                            (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)
+            static ref SPEC_RE: Regex = Regex::new(
+                r"(?x)
+                    ^
+                    \{
+                        (?:(?P<index>\d+)|(?P<name>[[:alpha:]][[:alnum:]]*))?
+                        (?:
+                            :
+                            (?P<align>[<^>])?
+                            (?P<sign>\+)?
+                            (?P<repr>\#)?
+                            (?P<pad>0)?
+                            (?P<width>
+                                (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)
+                            )?
+                            (?:\.(?P<precision>
+                                (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)|\*
+                            ))?
+                            (?P<format>[?oxXbeE])?
                         )?
-                        (?:\.(?P<precision>
-                            (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)|\*
-                        ))?
-                        (?P<format>[?oxXbeE])?
-                    )?
-                \}
-            ").unwrap();
+                    \}
+                "
+            )
+            .unwrap();
         }
 
         match SPEC_RE.captures(self.unparsed) {
             None => self.error(),
-            Some(captures) =>
-                match self.parse_specifier(&captures) {
-                    Ok(specifier) => self.lookup_value(&captures)
-                        .ok_or(())
-                        .and_then(|value| Argument::new(specifier, value))
-                        .map(|arg| self.advance_and_return(captures.get(0).unwrap().end(), Segment::Argument(arg)))
-                        .or_else(|_| self.error()),
-                    Err(_) => self.error()
-                }
+            Some(captures) => match self.parse_specifier(&captures) {
+                Ok(specifier) => self
+                    .lookup_value(&captures)
+                    .ok_or(())
+                    .and_then(|value| Argument::new(specifier, value))
+                    .map(|arg| {
+                        self.advance_and_return(
+                            captures.get(0).unwrap().end(),
+                            Segment::Argument(arg),
+                        )
+                    })
+                    .or_else(|_| self.error()),
+                Err(_) => self.error(),
+            },
         }
     }
 
     fn lookup_value(&mut self, captures: &Captures) -> Option<&'p V> {
         if let Some(idx) = captures.name("index") {
-            idx.as_str().parse::<usize>().ok().and_then(|idx| self.lookup_value_by_index(idx))
+            idx.as_str()
+                .parse::<usize>()
+                .ok()
+                .and_then(|idx| self.lookup_value_by_index(idx))
         } else if let Some(name) = captures.name("name") {
             self.lookup_value_by_name(name.as_str())
         } else {
@@ -211,7 +234,7 @@ where
 impl<'p, V, M> Iterator for Parser<'p, V, M>
 where
     V: FormattableValue + ConvertToSize<'p>,
-    M: Map<str, V>
+    M: Map<str, V>,
 {
     type Item = Result<Segment<'p, V>, usize>;
 
@@ -219,9 +242,9 @@ where
         static BRACES: &[char] = &['{', '}'];
 
         if self.unparsed.len() == 0 {
-            return None
+            return None;
         }
-        
+
         match self.unparsed.find(BRACES) {
             None => Some(Ok(self.text_segment(self.unparsed.len()))),
             Some(0) => Some(self.parse_braces()),

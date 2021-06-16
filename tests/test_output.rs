@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use rt_format::{Arguments};
 use rt_format::map::NoMap;
+use rt_format::Arguments;
 
 mod common;
 use common::Variant;
@@ -70,12 +70,22 @@ fn width_embedded() {
 
 #[test]
 fn width_by_index() {
-    assert_eq!("#   42#", fmt_args("#{:1$}#", &[Variant::Int(42), Variant::Int(5)]));
+    assert_eq!(
+        "#   42#",
+        fmt_args("#{:1$}#", &[Variant::Int(42), Variant::Int(5)])
+    );
 }
 
 #[test]
 fn width_by_name() {
-    assert_eq!("#   42#", fmt_args_map("#{:arglebargle$}#", &[Variant::Int(42)], &[("arglebargle", Variant::Int(5))]));
+    assert_eq!(
+        "#   42#",
+        fmt_args_map(
+            "#{:arglebargle$}#",
+            &[Variant::Int(42)],
+            &[("arglebargle", Variant::Int(5))]
+        )
+    );
 }
 
 #[test]
@@ -85,17 +95,30 @@ fn precision_embedded() {
 
 #[test]
 fn precision_by_index() {
-    assert_eq!("#42.04200#", fmt_args("#{:.1$}#", &[Variant::Float(42.042), Variant::Int(5)]));
+    assert_eq!(
+        "#42.04200#",
+        fmt_args("#{:.1$}#", &[Variant::Float(42.042), Variant::Int(5)])
+    );
 }
 
 #[test]
 fn precision_by_name() {
-    assert_eq!("#42.04200#", fmt_args_map("#{:.arglebargle$}#", &[Variant::Float(42.042)], &[("arglebargle", Variant::Int(5))]));
+    assert_eq!(
+        "#42.04200#",
+        fmt_args_map(
+            "#{:.arglebargle$}#",
+            &[Variant::Float(42.042)],
+            &[("arglebargle", Variant::Int(5))]
+        )
+    );
 }
 
 #[test]
 fn precision_by_asterisk() {
-    assert_eq!("#42.04200#", fmt_args("#{:.*}#", &[Variant::Int(5), Variant::Float(42.042)]));
+    assert_eq!(
+        "#42.04200#",
+        fmt_args("#{:.*}#", &[Variant::Int(5), Variant::Float(42.042)])
+    );
 }
 
 #[test]
