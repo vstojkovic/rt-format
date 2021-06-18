@@ -14,46 +14,46 @@ use crate::parser::ConvertToSize;
 
 generate_code! {
     align: Align {
-        "" => None,
-        "<" => Left,
-        "^" => Center,
-        ">" => Right,
+        None => "",
+        Left => "<",
+        Center => "^",
+        Right => ">",
     }
 
     sign: Sign {
-        "" => Default,
-        "+" => Always,
+        Default => "",
+        Always => "+",
     }
 
     repr: Repr {
-        "" => Default,
-        "#" => Alt,
+        Default => "",
+        Alt => "#",
     }
 
     pad: Pad {
-        "" => Space,
-        "0" => Zero,
+        Space => "",
+        Zero => "0",
     }
 
     width: Width {
-        "" => Auto,
-        "width$" => AtLeast { width: usize },
+        Auto => "",
+        AtLeast { width: usize } => "width$",
     }
 
     precision: Precision {
-        "" => Auto,
-        ".precision$" => Exactly { precision: usize },
+        Auto => "",
+        Exactly { precision: usize } => ".precision$",
     }
 
     format: Format {
-        "" => Display,
-        "?" => Debug,
-        "o" => Octal,
-        "x" => LowerHex,
-        "X" => UpperHex,
-        "b" => Binary,
-        "e" => LowerExp,
-        "E" => UpperExp,
+        Display => "",
+        Debug => "?",
+        Octal => "o",
+        LowerHex => "x",
+        UpperHex => "X",
+        Binary => "b",
+        LowerExp => "e",
+        UpperExp => "E",
     }
 }
 

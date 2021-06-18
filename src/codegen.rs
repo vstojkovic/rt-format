@@ -1,7 +1,7 @@
 macro_rules! generate_code {
     {
         $(
-            $field:ident : $type:ident { $($lit:literal => $variant:ident $({ $($var_field:ident : $var_type:ty),+ })?),+ $(,)? }
+            $field:ident : $type:ident { $($variant:ident $({ $($var_field:ident : $var_type:ty),+ })? => $lit:literal),+ $(,)? }
         )+
     } => {
         $(
