@@ -13,9 +13,8 @@ macro_rules! generate_code {
             }
             generate_code!(@enum_try_from $type [] [$(($lit $variant $({$($var_field)+})?))+]);
         )+
-        generate_code!(@formatting_traits [] $([$($variant)+])+);
         generate_code!(@spec_struct $($field $type)+);
-        generate_code!(@arg_struct
+        generate_code!(@fn_format_value
             $(
                 [$field $type $([$lit $variant $([$($var_field)+])?])+]
             )+
@@ -43,31 +42,6 @@ macro_rules! generate_code {
             }
         }
     };
-    (@formatting_traits [$($munched_dim:tt)*] $head_dim:tt $($tail_dim:tt)+) => {
-        generate_code!(@formatting_traits [$($munched_dim)* $head_dim] $($tail_dim)+);
-    };
-    (@formatting_traits [$($dim:tt)+] [$($variant:ident)+]) => {
-        pub trait FormattableValue {
-            fn supports_format(&self, specifier: &Specifier) -> bool;
-            paste! {
-                $(
-                    fn [<fmt_ $variant:snake>](&self, f: &mut fmt::Formatter) -> fmt::Result;
-                )+
-            }
-        }
-
-        struct ValueFormatter<'v, V: FormattableValue>(&'v V);
-
-        $(
-            impl<'v, V: FormattableValue> fmt::$variant for ValueFormatter<'v, V> {
-                fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                    paste! {
-                        self.0.[<fmt_ $variant:snake>](f)
-                    }
-                }
-            }
-        )+
-    };
     (@spec_struct $($field:ident $type:ty)+) => {
         #[derive(Debug, Copy, Clone, PartialEq)]
         pub struct Specifier {
@@ -76,46 +50,37 @@ macro_rules! generate_code {
             ),+
         }
     };
-    (@arg_struct $($dim:tt)+) => {
-        #[derive(Debug, Copy, Clone, PartialEq)]
-        pub struct Argument<'v, V: FormattableValue> {
-            pub specifier: Specifier,
-            pub value: &'v V,
-            _private: ()
-        }
-
-        impl<'v, V: FormattableValue> Argument<'v, V> {
-            pub fn new(specifier: Specifier, value: &'v V) -> Result<Argument<'v, V>, ()> {
-                if value.supports_format(&specifier) {
-                    Ok(Argument { specifier, value, _private: () })
-                } else {
-                    Err(())
-                }
-            }
-        }
-
-        impl<'v, V: FormattableValue> fmt::Display for Argument<'v, V> {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                generate_code!(@matcher (self, f, "", []) $($dim)+)
-            }
+    (@fn_format_value $($dim:tt)+) => {
+        pub fn format_value<V>(specifier: &Specifier, value: &V, f: &mut fmt::Formatter) -> fmt::Result
+        where
+            V: fmt::Display
+                + fmt::Debug
+                + fmt::Octal
+                + fmt::LowerHex
+                + fmt::UpperHex
+                + fmt::Binary
+                + fmt::LowerExp
+                + fmt::UpperExp,
+        {
+            generate_code!(@matcher (specifier, value, f, "", []) $($dim)+)
         }
     };
-    (@matcher ($self:ident, $out:ident, $prefix:expr, $named_args:tt) $head_dim:tt $($tail_dim:tt)+) => {
-        generate_code!(@matcher_branch ($self, $out, $prefix, $named_args) $head_dim [$($tail_dim)+])
+    (@matcher ($spec:ident, $val:ident, $out:ident, $prefix:expr, $named_args:tt) $head_dim:tt $($tail_dim:tt)+) => {
+        generate_code!(@matcher_branch ($spec, $val, $out, $prefix, $named_args) $head_dim [$($tail_dim)+])
     };
-    (@matcher ($self:ident, $out:ident, $prefix:expr, $named_args:tt) $last_dim:tt) => {
-        generate_code!(@matcher_leaf ($self, $out, $prefix, $named_args) $last_dim)
+    (@matcher ($spec:ident, $val:ident, $out:ident, $prefix:expr, $named_args:tt) $last_dim:tt) => {
+        generate_code!(@matcher_leaf ($spec, $val, $out, $prefix, $named_args) $last_dim)
     };
     (@matcher_branch
-        ($self:ident, $out:ident, $prefix:expr, $named_args:tt)
+        ($spec:ident, $val:ident, $out:ident, $prefix:expr, $named_args:tt)
         [$field:ident $type:ident $([$lit:literal $variant:ident $([$($var_field:ident)+])?])+]
         $tail:tt
     ) => {
-        match $self.specifier.$field {
+        match $spec.$field {
             $(
                 $type::$variant $({ $($var_field),+ })? => generate_code!(
                     @matcher_tail
-                    ($self, $out, concat!($prefix, $lit))
+                    ($spec, $val, $out, concat!($prefix, $lit))
                     $named_args
                     [$($($var_field)+)?]
                     $tail
@@ -123,32 +88,32 @@ macro_rules! generate_code {
             ),+
         }
     };
-    (@matcher_tail ($self:ident, $out:ident, $prefix:expr) [$($lhs_arg:ident)*] [$($rhs_arg:ident)*] [$($dim:tt)+]) => {
-        generate_code!(@matcher ($self, $out, $prefix, [$($lhs_arg)* $($rhs_arg)*]) $($dim)+)
+    (@matcher_tail ($spec:ident, $val:ident, $out:ident, $prefix:expr) [$($lhs_arg:ident)*] [$($rhs_arg:ident)*] [$($dim:tt)+]) => {
+        generate_code!(@matcher ($spec, $val, $out, $prefix, [$($lhs_arg)* $($rhs_arg)*]) $($dim)+)
     };
     (@matcher_leaf
-        ($self:ident, $out:ident, $prefix:expr, $named_args:tt)
+        ($spec:ident, $val:ident, $out:ident, $prefix:expr, $named_args:tt)
         [$field:ident $type:ident $([$lit:literal $variant:ident $([$($var_field:ident)+])?])+]
     ) => {
-        match $self.specifier.$field {
+        match $spec.$field {
             $(
                 $type::$variant $({ $($var_field),+ })? => generate_code!(
                     @matcher_concat_args
-                    ($self, $out, concat!($prefix, $lit))
+                    ($spec, $val, $out, concat!($prefix, $lit))
                     $named_args
                     [$($($var_field)+)?]
                 )
             ),+
         }
     };
-    (@matcher_concat_args ($self:ident, $out:ident, $format_str:expr) [$($lhs_arg:ident)*] [$($rhs_arg:ident)*]) => {
-        generate_code!(@matcher_write ($self, $out, $format_str) [$($lhs_arg)* $($rhs_arg)*])
+    (@matcher_concat_args ($spec:ident, $val:ident, $out:ident, $format_str:expr) [$($lhs_arg:ident)*] [$($rhs_arg:ident)*]) => {
+        generate_code!(@matcher_write ($spec, $val, $out, $format_str) [$($lhs_arg)* $($rhs_arg)*])
     };
-    (@matcher_write ($self:ident, $out:ident, $format_str:expr) [$($named_arg:ident)*]) => {
+    (@matcher_write ($spec:ident, $val:ident, $out:ident, $format_str:expr) [$($named_arg:ident)*]) => {
         write!(
             $out,
             concat!("{:", $format_str, "}"),
-            ValueFormatter($self.value),
+            $val,
             $($named_arg = $named_arg),*
         )
     };

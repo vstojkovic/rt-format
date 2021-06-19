@@ -2,11 +2,10 @@ use regex::{Captures, Match};
 use std::convert::{TryFrom, TryInto};
 use std::slice::Iter;
 
+use crate::argument::{Argument, Segment};
 use crate::map::Map;
-use crate::{
-    Align, Argument, Format, FormattableValue, Pad, Precision, Repr, Segment, Sign, Specifier,
-    Width,
-};
+use crate::value::FormattableValue;
+use crate::{Align, Format, Pad, Precision, Repr, Sign, Specifier, Width};
 
 pub trait ConvertToSize<'s> {
     fn convert(&'s self) -> Result<usize, ()>;
