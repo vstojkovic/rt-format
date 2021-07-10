@@ -9,6 +9,8 @@ readme = "README.md"
 license = "Apache-2.0"
 keywords = ["format", "fmt", "runtime", "string", "formatting"]
 
+repository = "https://github.com/vstojkovic/rt-format"
+
 [dependencies]
 lazy_static = "1"
 regex = "1"
