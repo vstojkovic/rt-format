@@ -1,3 +1,8 @@
+//! Provides support for parsing typical Rust formatting strings.
+//! 
+//! The parser supports all of the features of the formatting strings that are normally passed to
+//! the `format!` macro, except for the fill character.
+
 use regex::{Captures, Match};
 use std::convert::{TryFrom, TryInto};
 use std::slice::Iter;
@@ -7,7 +12,9 @@ use crate::map::Map;
 use crate::value::FormattableValue;
 use crate::{Align, Format, Pad, Precision, Repr, Sign, Specifier, Width};
 
+/// A type conversion into `usize` that might fail, similar to `TryInto`. Does not consume `self`.
 pub trait ConvertToSize<'s> {
+    /// Tries perform the conversion.
     fn convert(&'s self) -> Result<usize, ()>;
 }
 
@@ -20,6 +27,7 @@ where
     }
 }
 
+/// An iterator of `Segment`s that correspond to the parts of the formatting string being parsed.
 pub struct Parser<'p, V, M>
 where
     V: FormattableValue + ConvertToSize<'p>,
@@ -32,6 +40,7 @@ where
     positional_iter: Iter<'p, V>,
 }
 
+/// A specifier component that can be parsed from the corresponding part of the formatting string.
 trait Parseable<'p, 'm, V, M>
 where
     V: FormattableValue + ConvertToSize<'p>,
@@ -52,6 +61,8 @@ where
     }
 }
 
+/// Parses a size specifier, such as width or precision. If the size is not hard-coded in the
+/// formatting string, looks up the corresponding argument and tries to convert it to `usize`.
 fn parse_size<'p, 'm, V, M>(text: &str, parser: &Parser<'p, V, M>) -> Result<usize, ()>
 where
     V: FormattableValue + ConvertToSize<'p>,
@@ -108,6 +119,8 @@ where
     V: FormattableValue + ConvertToSize<'p>,
     M: Map<str, V>,
 {
+    /// Creates a new `Parser` for the given formatting string, positional arguments, and named
+    /// arguments.
     pub fn new(format: &'p str, positional: &'p [V], named: &'p M) -> Self {
         Parser {
             unparsed: format,

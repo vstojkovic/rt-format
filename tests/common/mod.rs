@@ -1,3 +1,5 @@
+// TODO: Find a way to avoid code duplication between this and the example code in lib.rs docs.
+
 use std::cmp::PartialEq;
 use std::convert::TryInto;
 use std::fmt;

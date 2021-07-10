@@ -1,11 +1,61 @@
+//! The `generate_code!` macro enerates the `Specifier` struct, `format_value` function, and all the
+//! code they need.
+//! 
+//! The macro expects definitions of "dimensions" of the format specifier (e.g. width, precision,
+//! and format to use). Each dimension has to define the name of the field to generate in the
+//! `Specifier` struct, the name of the enum type to generate for that field, and the definition of
+//! each variant for that enum. Each variant definition declares the variant name, optionally with
+//! one or more fields for that variant to contain, and then the format string fragment to generate
+//! when that variant is matched.
+//! 
+//! The way `format_value` function works is through a tree of nested `match` blooks on `Specifier` 
+//! fields, with a call to `write!` macro with a different formatting string at each leaf.
+//! 
+//! # Examples
+//! ```ignore
+//! generate_code! {
+//!     foo: Foo {
+//!         Argle => "",
+//!         Bargle { glop_glyf: usize } => "glop_glyf$",
+//!     }
+//! 
+//!     bar: Bar {
+//!         Olle => "",
+//!         Bolle => "@",
+//!     }
+//! }
+//! ```
+//! 
+//! The resulting `format_value` would look like this:
+//! ```ignore
+//! pub fn format_value<V>(specifier: &Specifier, value: &V, f: &mut fmt::Formatter) -> fmt::Result {
+//!     match (specifier.foo) {
+//!         Argle => match (specifier.bar) {
+//!             Olle => write!(f, "{:}", value),
+//!             Bolle => write!(f, "{:@}", value),
+//!         },
+//!         Bargle { glop_glyf } => match (specifier.bar) {
+//!             Olle => write!(f, "{:glop_glyf$}", value, glop_glyf),
+//!             Bolle => write!(f, "{:glop_glyf$@}", value, glop_glyf),
+//!         }
+//!     }
+//! }
+
 macro_rules! generate_code {
     {
         $(
-            $field:ident : $type:ident { $($variant:ident $({ $($var_field:ident : $var_type:ty),+ })? => $lit:literal),+ $(,)? }
+            $(#[$dim_meta:meta])*
+            $field:ident : $type:ident {
+                $(
+                    $variant:ident $({ $($var_field:ident : $var_type:ty),+ })? => $lit:literal
+                ),+ $(,)? 
+            }
         )+
     } => {
         $(
+            $(#[$dim_meta])*
             #[derive(Debug, Copy, Clone, PartialEq)]
+            #[allow(missing_docs)]
             pub enum $type {
                 $(
                     $variant $({ $($var_field: $var_type),+ })?
@@ -13,7 +63,16 @@ macro_rules! generate_code {
             }
             generate_code!(@enum_try_from $type [] [$(($lit $variant $({$($var_field)+})?))+]);
         )+
-        generate_code!(@spec_struct $($field $type)+);
+
+        /// The specification for the format of an argument in the formatting string.
+        #[derive(Debug, Copy, Clone, PartialEq)]
+        pub struct Specifier {
+            $(
+                $(#[$dim_meta])*
+                pub $field: $type
+            ),+
+        }
+
         generate_code!(@fn_format_value
             $(
                 [$field $type $([$lit $variant $([$($var_field)+])?])+]
@@ -42,15 +101,12 @@ macro_rules! generate_code {
             }
         }
     };
-    (@spec_struct $($field:ident $type:ty)+) => {
-        #[derive(Debug, Copy, Clone, PartialEq)]
-        pub struct Specifier {
-            $(
-                pub $field: $type
-            ),+
-        }
-    };
     (@fn_format_value $($dim:tt)+) => {
+        /// Formats the given value using the given formatter and the given format specification.
+        /// 
+        /// Since the implementation of `format_value` employs the `write!` macro, the `value` must
+        /// implement all of the `std::fmt` formatting traits. Which trait will actually be used is
+        /// determined at runtime, based on the contents of the `specifier`.
         pub fn format_value<V>(specifier: &Specifier, value: &V, f: &mut fmt::Formatter) -> fmt::Result
         where
             V: fmt::Display
