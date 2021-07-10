@@ -4,6 +4,11 @@ version = "0.1.0"
 authors = ["Vojislav Stojkovic <zinthys@gmail.com>"]
 edition = "2018"
 
+description = "Fully-runtime equivalent of the format! macro"
+readme = "README.md"
+license = "Apache-2.0"
+keywords = ["format", "fmt", "runtime", "string", "formatting"]
+
 [dependencies]
 lazy_static = "1"
 regex = "1"
