@@ -7,8 +7,8 @@ use crate::{format_value, Specifier};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Argument<'v, V: FormattableValue> {
-    pub specifier: Specifier,
-    pub value: &'v V,
+    specifier: Specifier,
+    value: &'v V,
     _private: (),
 }
 
@@ -23,6 +23,14 @@ impl<'v, V: FormattableValue> Argument<'v, V> {
         } else {
             Err(())
         }
+    }
+
+    pub fn specifier(&self) -> &Specifier {
+        &self.specifier
+    }
+
+    pub fn value(&self) -> &'v V {
+        self.value
     }
 }
 
