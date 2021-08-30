@@ -55,6 +55,15 @@ pub enum Segment<'s, V: FormattableValue> {
     Argument(Argument<'s, V>),
 }
 
+impl<'s, V: FormattableValue> fmt::Display for Segment<'s, V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Segment::Text(text) => f.write_str(text),
+            Segment::Argument(arg) => arg.fmt(f),
+        }
+    }
+}
+
 /// A representation of the formatting string and associated values, ready to be formatted.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Arguments<'a, V: FormattableValue> {
@@ -83,10 +92,7 @@ impl<'a, V: FormattableValue + ConvertToSize<'a>> Arguments<'a, V> {
 impl<'a, V: FormattableValue> fmt::Display for Arguments<'a, V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for segment in self.segments.iter() {
-            match segment {
-                Segment::Text(text) => f.write_str(text)?,
-                Segment::Argument(arg) => arg.fmt(f)?,
-            }
+            segment.fmt(f)?
         }
         Ok(())
     }
