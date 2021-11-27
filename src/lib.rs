@@ -175,3 +175,87 @@ generate_code! {
         UpperExp => "E",
     }
 }
+
+impl Specifier {
+    /// Parse a specifier from an inner specifier string.
+    ///
+    /// Errors if positional or named arguments are required to resolve some of its attributes
+    /// like width or precision (e.g. `width$.2`).
+    ///
+    /// # Examples
+    /// ```
+    /// # use rt_format::{Align, Format, Pad, Precision, Repr, Sign, Specifier, Width};
+    /// assert_eq!(
+    ///     Specifier::parse("^+#8.2"),
+    ///     Ok(Specifier {
+    ///         align: Align::Center,
+    ///         sign: Sign::Always,
+    ///         repr: Repr::Alt,
+    ///         pad: Pad::Space,
+    ///         width: Width::AtLeast { width: 8 },
+    ///         precision: Precision::Exactly { precision: 2 },
+    ///         format: Format::Display,
+    ///     })
+    /// );
+    /// assert_eq!(Specifier::parse("width$.2"), Err(()));
+    /// ```
+    pub fn parse(spec_str: &str) -> Result<Specifier, ()> {
+        parser::parse_specifier_from_str(spec_str)
+    }
+}
+
+impl Default for Specifier {
+    fn default() -> Self {
+        Specifier {
+            align: Align::None,
+            sign: Sign::Default,
+            repr: Repr::Default,
+            pad: Pad::Space,
+            width: Width::Auto,
+            precision: Precision::Auto,
+            format: Format::Display,
+        }
+    }
+}
+impl fmt::Display for Specifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Specifier { align, sign, repr, pad, width, precision, format } = self;
+        match align {
+            Align::None => (),
+            Align::Left => write!(f, "<")?,
+            Align::Center => write!(f, "^")?,
+            Align::Right => write!(f, ">")?,
+        }
+        match sign {
+            Sign::Default => (),
+            Sign::Always => write!(f, "+")?,
+        }
+        match repr {
+            Repr::Default => (),
+            Repr::Alt => write!(f, "#")?,
+        }
+        match pad {
+            Pad::Space => (),
+            Pad::Zero => write!(f, "0")?,
+        }
+        match width {
+            Width::Auto => (),
+            Width::AtLeast { width } => write!(f, "{}", width)?,
+        }
+        match precision {
+            Precision::Auto => (),
+            Precision::Exactly { precision } => write!(f, ".{}", precision)?,
+        }
+        match format {
+            Format::Display => (),
+            Format::Debug => write!(f, "?")?,
+            Format::Octal => write!(f, "o")?,
+            Format::LowerHex => write!(f, "x")?,
+            Format::UpperHex => write!(f, "X")?,
+            Format::Binary => write!(f, "b")?,
+            Format::LowerExp => write!(f, "e")?,
+            Format::UpperExp => write!(f, "E")?,
+        }
+        Ok(())
+    }
+}

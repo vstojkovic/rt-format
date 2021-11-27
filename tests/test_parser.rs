@@ -129,3 +129,10 @@ fn missing_asterisk_precision() {
         Arguments::parse("{} {0:.*}", &[Variant::Int(42)], &NoMap)
     );
 }
+#[test]
+fn uiae() {
+    assert_eq!(
+        Err(1000),
+        Arguments::parse("{:x?}", &[Variant::Int(42)], &NoMap)
+    );
+}

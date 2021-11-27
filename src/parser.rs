@@ -5,6 +5,7 @@
 
 use regex::{Captures, Match};
 use std::convert::{TryFrom, TryInto};
+use std::fmt::Formatter;
 use std::slice::Iter;
 
 use crate::argument::{Argument, Segment};
@@ -47,7 +48,12 @@ where
     M: Map<str, V>,
     Self: Sized,
 {
-    fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()>;
+    /// Parse the specifier component from the given regex capture group.
+    ///
+    /// It's also passed the parser to fetch specifier-arguments from (e.g. `5.precision$`).
+    /// Returns an error if there is an error in the capture group or if the parser isn't passed
+    /// but specifier-arguments are used.
+    fn parse(capture: Option<Match<'m>>, parser: Option<&mut Parser<'p, V, M>>) -> Result<Self, ()>;
 }
 
 impl<'p, 'm, V, M, T> Parseable<'p, 'm, V, M> for T
@@ -56,19 +62,20 @@ where
     M: Map<str, V>,
     T: Sized + TryFrom<&'m str, Error = ()>,
 {
-    fn parse(capture: Option<Match<'m>>, _: &mut Parser<'p, V, M>) -> Result<Self, ()> {
+    fn parse(capture: Option<Match<'m>>, _: Option<&mut Parser<'p, V, M>>) -> Result<Self, ()> {
         capture.map(|m| m.as_str()).unwrap_or("").try_into()
     }
 }
 
 /// Parses a size specifier, such as width or precision. If the size is not hard-coded in the
 /// formatting string, looks up the corresponding argument and tries to convert it to `usize`.
-fn parse_size<'p, 'm, V, M>(text: &str, parser: &Parser<'p, V, M>) -> Result<usize, ()>
+fn parse_size<'p, 'm, V, M>(text: &str, parser: Option<&mut Parser<'p, V, M>>) -> Result<usize, ()>
 where
     V: FormattableValue + ConvertToSize<'p>,
     M: Map<str, V>,
 {
-    if text.ends_with('$') {
+    if text.ends_with('$') && parser.is_some() {
+        let parser = parser.unwrap();
         let text = &text[..text.len() - 1];
         let value = if text.as_bytes()[0].is_ascii_digit() {
             text.parse()
@@ -88,7 +95,7 @@ where
     V: FormattableValue + ConvertToSize<'p>,
     M: Map<str, V>,
 {
-    fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()> {
+    fn parse(capture: Option<Match<'m>>, parser: Option<&mut Parser<'p, V, M>>) -> Result<Self, ()> {
         match capture.map(|m| m.as_str()).unwrap_or("") {
             "" => Ok(Width::Auto),
             s @ _ => parse_size(s, parser).map(|width| Width::AtLeast { width }),
@@ -101,17 +108,33 @@ where
     V: FormattableValue + ConvertToSize<'p>,
     M: Map<str, V>,
 {
-    fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()> {
-        match capture.map(|m| m.as_str()).unwrap_or("") {
-            "" => Ok(Precision::Auto),
-            "*" => parser
+    fn parse(capture: Option<Match<'m>>, mut parser: Option<&mut Parser<'p, V, M>>) -> Result<Self, ()> {
+        match (capture.map(|m| m.as_str()).unwrap_or(""), parser.as_deref_mut()) {
+            ("", _) => Ok(Precision::Auto),
+            ("*", Some(parser)) => parser
                 .next_value()
                 .ok_or(())
                 .and_then(ConvertToSize::convert)
                 .map(|precision| Precision::Exactly { precision }),
-            s @ _ => parse_size(s, parser).map(|precision| Precision::Exactly { precision }),
+            (s, _) => parse_size(s, parser).map(|precision| Precision::Exactly { precision }),
         }
     }
+}
+
+macro_rules! spec_inner_re {
+    () => (r"
+        (?P<align>[<^>])?
+        (?P<sign>\+)?
+        (?P<repr>\#)?
+        (?P<pad>0)?
+        (?P<width>
+            (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)
+        )?
+        (?:\.(?P<precision>
+            (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)|\*
+        ))?
+        (?P<format>[?oxXbeE])?
+    ");
 }
 
 impl<'p, V, M> Parser<'p, V, M>
@@ -156,51 +179,33 @@ where
         }
     }
 
-    fn parse_specifier(&mut self, captures: &Captures) -> Result<Specifier, ()> {
-        Ok(Specifier {
-            align: Align::parse(captures.name("align"), self)?,
-            sign: Sign::parse(captures.name("sign"), self)?,
-            repr: Repr::parse(captures.name("repr"), self)?,
-            pad: Pad::parse(captures.name("pad"), self)?,
-            width: Width::parse(captures.name("width"), self)?,
-            precision: Precision::parse(captures.name("precision"), self)?,
-            format: Format::parse(captures.name("format"), self)?,
-        })
-    }
-
     fn parse_argument(&mut self) -> Result<Segment<'p, V>, usize> {
         use lazy_static::lazy_static;
         use regex::Regex;
 
         lazy_static! {
             static ref SPEC_RE: Regex = Regex::new(
-                r"(?x)
-                    ^
-                    \{
-                        (?:(?P<index>\d+)|(?P<name>[[:alpha:]][[:alnum:]]*))?
-                        (?:
-                            :
-                            (?P<align>[<^>])?
-                            (?P<sign>\+)?
-                            (?P<repr>\#)?
-                            (?P<pad>0)?
-                            (?P<width>
-                                (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)
+                concat!(
+                    r"(?x)
+                        ^
+                        \{
+                            (?:(?P<index>\d+)|(?P<name>[[:alpha:]][[:alnum:]]*))?
+                            (?:
+                                :
+                    ",
+                    spec_inner_re!(),
+                    r"
                             )?
-                            (?:\.(?P<precision>
-                                (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)|\*
-                            ))?
-                            (?P<format>[?oxXbeE])?
-                        )?
-                    \}
-                "
+                        \}
+                    ",
+                )
             )
             .unwrap();
         }
 
         match SPEC_RE.captures(self.unparsed) {
             None => self.error(),
-            Some(captures) => match self.parse_specifier(&captures) {
+            Some(captures) => match parse_specifier(&captures, Some(self)) {
                 Ok(specifier) => self
                     .lookup_value(&captures)
                     .ok_or(())
@@ -242,6 +247,61 @@ where
         self.named.get(name)
     }
 }
+
+pub(crate) fn parse_specifier_from_str(spec_str: &str) -> Result<Specifier, ()> {
+    use lazy_static::lazy_static;
+    use regex::Regex;
+    use std::collections::HashMap;
+
+    struct DummyValue;
+    impl FormattableValue for DummyValue {
+        fn supports_format(&self, _: &Specifier) -> bool { unreachable!() }
+        fn fmt_display(&self, _: &mut Formatter) -> std::fmt::Result { unreachable!() }
+        fn fmt_debug(&self, _: &mut Formatter) -> std::fmt::Result { unreachable!() }
+        fn fmt_octal(&self, _: &mut Formatter) -> std::fmt::Result { unreachable!() }
+        fn fmt_lower_hex(&self, _: &mut Formatter) -> std::fmt::Result { unreachable!() }
+        fn fmt_upper_hex(&self, _: &mut Formatter) -> std::fmt::Result { unreachable!() }
+        fn fmt_binary(&self, _: &mut Formatter) -> std::fmt::Result { unreachable!() }
+        fn fmt_lower_exp(&self, _: &mut Formatter) -> std::fmt::Result { unreachable!() }
+        fn fmt_upper_exp(&self, _: &mut Formatter) -> std::fmt::Result { unreachable!() }
+    }
+    impl<'p> ConvertToSize<'p> for DummyValue {
+        fn convert(&'p self) -> Result<usize, ()> { unreachable!() }
+    }
+
+    lazy_static! {
+            static ref SPEC_INNER_RE: Regex = Regex::new(
+                concat!(
+                    r"(?x)
+                        ^
+                    ",
+                    spec_inner_re!(),
+                )
+            )
+            .unwrap();
+    }
+    match SPEC_INNER_RE.captures(spec_str) {
+        None => Err(()),
+        Some(captures) => parse_specifier::<DummyValue, HashMap<&str, DummyValue>>(&captures, None),
+    }
+}
+
+fn parse_specifier<'p, V, M>(captures: &Captures, mut parser: Option<&mut Parser<'p, V, M>>) -> Result<Specifier, ()>
+where
+    V: FormattableValue + ConvertToSize<'p>,
+    M: Map<str, V>,
+{
+    Ok(Specifier {
+        align: Align::parse(captures.name("align"), parser.as_deref_mut())?,
+        sign: Sign::parse(captures.name("sign"), parser.as_deref_mut())?,
+        repr: Repr::parse(captures.name("repr"), parser.as_deref_mut())?,
+        pad: Pad::parse(captures.name("pad"), parser.as_deref_mut())?,
+        width: Width::parse(captures.name("width"), parser.as_deref_mut())?,
+        precision: Precision::parse(captures.name("precision"), parser.as_deref_mut())?,
+        format: Format::parse(captures.name("format"), parser)?,
+    })
+}
+
 
 impl<'p, V, M> Iterator for Parser<'p, V, M>
 where

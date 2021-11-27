@@ -1,4 +1,4 @@
-//! The `generate_code!` macro enerates the `Specifier` struct, `format_value` function, and all the
+//! The `generate_code!` macro generates the `Specifier` struct, `format_value` function, and all the
 //! code they need.
 //! 
 //! The macro expects definitions of "dimensions" of the format specifier (e.g. width, precision,
@@ -8,7 +8,7 @@
 //! one or more fields for that variant to contain, and then the format string fragment to generate
 //! when that variant is matched.
 //! 
-//! The way `format_value` function works is through a tree of nested `match` blooks on `Specifier` 
+//! The way `format_value` function works is through a tree of nested `match` blocks on `Specifier`
 //! fields, with a call to `write!` macro with a different formatting string at each leaf.
 //! 
 //! # Examples
@@ -54,7 +54,7 @@ macro_rules! generate_code {
     } => {
         $(
             $(#[$dim_meta])*
-            #[derive(Debug, Copy, Clone, PartialEq)]
+            #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
             #[allow(missing_docs)]
             pub enum $type {
                 $(
@@ -65,7 +65,7 @@ macro_rules! generate_code {
         )+
 
         /// The specification for the format of an argument in the formatting string.
-        #[derive(Debug, Copy, Clone, PartialEq)]
+        #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
         pub struct Specifier {
             $(
                 $(#[$dim_meta])*
