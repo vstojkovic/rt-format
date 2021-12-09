@@ -71,7 +71,7 @@ pub struct Arguments<'a, V: FormattableValue> {
     pub segments: Vec<Segment<'a, V>>,
 }
 
-impl<'a, V: FormattableValue + ConvertToSize<'a>> Arguments<'a, V> {
+impl<'a, V: FormattableValue + ConvertToSize> Arguments<'a, V> {
     /// Parses the formatting string, using given positional and named arguments. Does not perform
     /// any formatting. It just parses the formatting string, validates that all the arguments are
     /// present, and that each argument supports the requested format.

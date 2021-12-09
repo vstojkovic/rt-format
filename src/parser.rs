@@ -13,16 +13,16 @@ use crate::value::FormattableValue;
 use crate::{Align, Format, Pad, Precision, Repr, Sign, Specifier, Width};
 
 /// A type conversion into `usize` that might fail, similar to `TryInto`. Does not consume `self`.
-pub trait ConvertToSize<'s> {
+pub trait ConvertToSize {
     /// Tries perform the conversion.
-    fn convert(&'s self) -> Result<usize, ()>;
+    fn convert(&self) -> Result<usize, ()>;
 }
 
-impl<'t, T: 't> ConvertToSize<'t> for T
+impl<T> ConvertToSize for T
 where
-    &'t T: TryInto<usize, Error = ()>,
+    for<'t> &'t T: TryInto<usize, Error = ()>,
 {
-    fn convert(&'t self) -> Result<usize, ()> {
+    fn convert(&self) -> Result<usize, ()> {
         self.try_into()
     }
 }
@@ -30,7 +30,7 @@ where
 /// An iterator of `Segment`s that correspond to the parts of the formatting string being parsed.
 pub struct Parser<'p, V, M>
 where
-    V: FormattableValue + ConvertToSize<'p>,
+    V: FormattableValue + ConvertToSize,
     M: Map<str, V>,
 {
     unparsed: &'p str,
@@ -43,7 +43,7 @@ where
 /// A specifier component that can be parsed from the corresponding part of the formatting string.
 trait Parseable<'p, 'm, V, M>
 where
-    V: FormattableValue + ConvertToSize<'p>,
+    V: FormattableValue + ConvertToSize,
     M: Map<str, V>,
     Self: Sized,
 {
@@ -52,7 +52,7 @@ where
 
 impl<'p, 'm, V, M, T> Parseable<'p, 'm, V, M> for T
 where
-    V: FormattableValue + ConvertToSize<'p>,
+    V: FormattableValue + ConvertToSize,
     M: Map<str, V>,
     T: Sized + TryFrom<&'m str, Error = ()>,
 {
@@ -65,7 +65,7 @@ where
 /// formatting string, looks up the corresponding argument and tries to convert it to `usize`.
 fn parse_size<'p, 'm, V, M>(text: &str, parser: &Parser<'p, V, M>) -> Result<usize, ()>
 where
-    V: FormattableValue + ConvertToSize<'p>,
+    V: FormattableValue + ConvertToSize,
     M: Map<str, V>,
 {
     if text.ends_with('$') {
@@ -85,7 +85,7 @@ where
 
 impl<'p, 'm, V, M> Parseable<'p, 'm, V, M> for Width
 where
-    V: FormattableValue + ConvertToSize<'p>,
+    V: FormattableValue + ConvertToSize,
     M: Map<str, V>,
 {
     fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()> {
@@ -98,7 +98,7 @@ where
 
 impl<'p, 'm, V, M> Parseable<'p, 'm, V, M> for Precision
 where
-    V: FormattableValue + ConvertToSize<'p>,
+    V: FormattableValue + ConvertToSize,
     M: Map<str, V>,
 {
     fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()> {
@@ -116,7 +116,7 @@ where
 
 impl<'p, V, M> Parser<'p, V, M>
 where
-    V: FormattableValue + ConvertToSize<'p>,
+    V: FormattableValue + ConvertToSize,
     M: Map<str, V>,
 {
     /// Creates a new `Parser` for the given formatting string, positional arguments, and named
@@ -245,7 +245,7 @@ where
 
 impl<'p, V, M> Iterator for Parser<'p, V, M>
 where
-    V: FormattableValue + ConvertToSize<'p>,
+    V: FormattableValue + ConvertToSize,
     M: Map<str, V>,
 {
     type Item = Result<Segment<'p, V>, usize>;
