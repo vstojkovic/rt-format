@@ -54,7 +54,7 @@ macro_rules! generate_code {
     } => {
         $(
             $(#[$dim_meta])*
-            #[derive(Debug, Copy, Clone, PartialEq)]
+            #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
             #[allow(missing_docs)]
             pub enum $type {
                 $(
@@ -65,7 +65,7 @@ macro_rules! generate_code {
         )+
 
         /// The specification for the format of an argument in the formatting string.
-        #[derive(Debug, Copy, Clone, PartialEq)]
+        #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
         pub struct Specifier {
             $(
                 $(#[$dim_meta])*
