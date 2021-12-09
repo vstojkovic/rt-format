@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use rt_format::map::NoMap;
-use rt_format::Arguments;
+use rt_format::parser::{parse_specifier, ValueSource};
+use rt_format::{Align, Arguments, Format, Pad, Precision, Repr, Sign, Specifier, Width};
 
 mod common;
 use common::Variant;
@@ -127,5 +128,28 @@ fn missing_asterisk_precision() {
     assert_eq!(
         Err(3),
         Arguments::parse("{} {0:.*}", &[Variant::Int(42)], &NoMap)
+    );
+}
+
+#[test]
+fn parse_specifier_smoke_test() {
+    struct NoValues;
+    impl ValueSource<Variant> for NoValues {
+        fn next_value(&mut self) -> Option<&Variant> { None }
+        fn lookup_value_by_index(&self, _: usize) -> Option<&Variant> { None }
+        fn lookup_value_by_name(&self, _: &str) -> Option<&Variant> { None }
+    }
+
+    assert_eq!(
+        Ok(Specifier {
+            align: Align::Right,
+            sign: Sign::Always,
+            repr: Repr::Alt,
+            pad: Pad::Zero,
+            width: Width::AtLeast { width: 42 },
+            precision: Precision::Exactly { precision: 17 },
+            format: Format::UpperExp,
+        }),
+        parse_specifier(">+#042.17E", &mut NoValues {})
     );
 }

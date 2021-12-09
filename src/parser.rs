@@ -119,6 +119,58 @@ where
     }
 }
 
+macro_rules! SPEC_REGEX_FRAG {
+    () => { r"
+        (?P<align>[<^>])?
+        (?P<sign>\+)?
+        (?P<repr>\#)?
+        (?P<pad>0)?
+        (?P<width>
+            (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)
+        )?
+        (?:\.(?P<precision>
+            (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)|\*
+        ))?
+        (?P<format>[?oxXbeE])?
+    " };
+}
+
+fn parse_specifier_captures<V, S>(captures: &Captures, value_src: &mut S) -> Result<Specifier, ()>
+where
+    V: FormattableValue + ConvertToSize,
+    S: ValueSource<V>,
+{
+    Ok(Specifier {
+        align: Align::parse(captures.name("align"), value_src)?,
+        sign: Sign::parse(captures.name("sign"), value_src)?,
+        repr: Repr::parse(captures.name("repr"), value_src)?,
+        pad: Pad::parse(captures.name("pad"), value_src)?,
+        width: Width::parse(captures.name("width"), value_src)?,
+        precision: Precision::parse(captures.name("precision"), value_src)?,
+        format: Format::parse(captures.name("format"), value_src)?,
+    })
+}
+
+/// Parses only the format specifier portion of a format argument. For example, in a format
+/// argument specification "{foo:#X}", this function would parse only the "#X" part.
+pub fn parse_specifier<V, S>(spec_str: &str, value_src: &mut S) -> Result<Specifier, ()>
+where
+    V: FormattableValue + ConvertToSize,
+    S: ValueSource<V>,
+{
+    use lazy_static::lazy_static;
+    use regex::Regex;
+
+    lazy_static! {
+        static ref SPEC_RE: Regex = Regex::new(concat!(r"(?x) ^", SPEC_REGEX_FRAG!())).unwrap();
+    }
+
+    match SPEC_RE.captures(spec_str) {
+        None => Err(()),
+        Some(captures) => parse_specifier_captures(&captures, value_src)
+    }
+}
+
 /// An iterator of `Segment`s that correspond to the parts of the formatting string being parsed.
 pub struct Parser<'p, V, M>
 where
@@ -174,51 +226,32 @@ where
         }
     }
 
-    fn parse_specifier(&mut self, captures: &Captures) -> Result<Specifier, ()> {
-        Ok(Specifier {
-            align: Align::parse(captures.name("align"), self)?,
-            sign: Sign::parse(captures.name("sign"), self)?,
-            repr: Repr::parse(captures.name("repr"), self)?,
-            pad: Pad::parse(captures.name("pad"), self)?,
-            width: Width::parse(captures.name("width"), self)?,
-            precision: Precision::parse(captures.name("precision"), self)?,
-            format: Format::parse(captures.name("format"), self)?,
-        })
-    }
-
     fn parse_argument(&mut self) -> Result<Segment<'p, V>, usize> {
         use lazy_static::lazy_static;
         use regex::Regex;
 
         lazy_static! {
-            static ref SPEC_RE: Regex = Regex::new(
-                r"(?x)
-                    ^
-                    \{
-                        (?:(?P<index>\d+)|(?P<name>[[:alpha:]][[:alnum:]]*))?
-                        (?:
-                            :
-                            (?P<align>[<^>])?
-                            (?P<sign>\+)?
-                            (?P<repr>\#)?
-                            (?P<pad>0)?
-                            (?P<width>
-                                (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)
+            static ref ARG_RE: Regex = Regex::new(
+                concat!(
+                    r"(?x)
+                        ^
+                        \{
+                            (?:(?P<index>\d+)|(?P<name>[[:alpha:]][[:alnum:]]*))?
+                            (?:
+                                :
+                    ",
+                    SPEC_REGEX_FRAG!(),
+                    r"
                             )?
-                            (?:\.(?P<precision>
-                                (?:\d+\$?)|(?:[[:alpha:]][[:alnum:]]*\$)|\*
-                            ))?
-                            (?P<format>[?oxXbeE])?
-                        )?
-                    \}
-                "
+                    \}"
+                )
             )
             .unwrap();
         }
 
-        match SPEC_RE.captures(self.unparsed) {
+        match ARG_RE.captures(self.unparsed) {
             None => self.error(),
-            Some(captures) => match self.parse_specifier(&captures) {
+            Some(captures) => match parse_specifier_captures(&captures, self) {
                 Ok(specifier) => self
                     .lookup_value(&captures)
                     .ok_or(())
