@@ -1,5 +1,5 @@
-//! The `generate_code!` macro enerates the `Specifier` struct, `format_value` function, and all the
-//! code they need.
+//! The `generate_code!` macro generates the `Specifier` struct, `format_value` function, and all
+//! the code they need.
 //! 
 //! The macro expects definitions of "dimensions" of the format specifier (e.g. width, precision,
 //! and format to use). Each dimension has to define the name of the field to generate in the
@@ -8,7 +8,7 @@
 //! one or more fields for that variant to contain, and then the format string fragment to generate
 //! when that variant is matched.
 //! 
-//! The way `format_value` function works is through a tree of nested `match` blooks on `Specifier` 
+//! The way `format_value` function works is through a tree of nested `match` blocks on `Specifier`
 //! fields, with a call to `write!` macro with a different formatting string at each leaf.
 //! 
 //! # Examples
