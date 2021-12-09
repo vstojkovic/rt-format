@@ -27,6 +27,98 @@ where
     }
 }
 
+/// A source of values to use when parsing the formatting string.
+pub trait ValueSource<V>
+where
+    V: FormattableValue,
+{
+    /// Returns the next positional argument, if any. Calling `lookup_value_by_index` does not
+    /// affect which value will be returned by the next call to `next_value`.
+    fn next_value(&mut self) -> Option<&V>;
+
+    /// Returns the positional argument with the given index, if any. Calling
+    /// `lookup_value_by_index` does not affect which value will be returned by the next call to
+    /// `next_value`.
+    fn lookup_value_by_index(&self, idx: usize) -> Option<&V>;
+
+    /// Returns the named argument with the given name, if any.
+    fn lookup_value_by_name(&self, name: &str) -> Option<&V>;
+}
+
+/// A specifier component that can be parsed from the corresponding part of the formatting string.
+trait Parseable<'m, V, S>
+where
+    V: FormattableValue + ConvertToSize,
+    S: ValueSource<V>,
+    Self: Sized,
+{
+    fn parse(capture: Option<Match<'m>>, value_src: &mut S) -> Result<Self, ()>;
+}
+
+impl<'m, V, S, T> Parseable<'m, V, S> for T
+where
+    V: FormattableValue + ConvertToSize,
+    S: ValueSource<V>,
+    T: Sized + TryFrom<&'m str, Error = ()>,
+{
+    fn parse(capture: Option<Match<'m>>, _: &mut S) -> Result<Self, ()> {
+        capture.map(|m| m.as_str()).unwrap_or("").try_into()
+    }
+}
+
+/// Parses a size specifier, such as width or precision. If the size is not hard-coded in the
+/// formatting string, looks up the corresponding argument and tries to convert it to `usize`.
+fn parse_size<'m, V, S>(text: &str, value_src: &S) -> Result<usize, ()>
+where
+    V: FormattableValue + ConvertToSize,
+    S: ValueSource<V>,
+{
+    if text.ends_with('$') {
+        let text = &text[..text.len() - 1];
+        let value = if text.as_bytes()[0].is_ascii_digit() {
+            text.parse()
+                .ok()
+                .and_then(|idx| value_src.lookup_value_by_index(idx))
+        } else {
+            value_src.lookup_value_by_name(text)
+        };
+        value.ok_or(()).and_then(ConvertToSize::convert)
+    } else {
+        text.parse().map_err(|_| ())
+    }
+}
+
+impl<'m, V, S> Parseable<'m, V, S> for Width
+where
+    V: FormattableValue + ConvertToSize,
+    S: ValueSource<V>,
+{
+    fn parse(capture: Option<Match<'m>>, value_src: &mut S) -> Result<Self, ()> {
+        match capture.map(|m| m.as_str()).unwrap_or("") {
+            "" => Ok(Width::Auto),
+            s @ _ => parse_size(s, value_src).map(|width| Width::AtLeast { width }),
+        }
+    }
+}
+
+impl<'m, V, S> Parseable<'m, V, S> for Precision
+where
+    V: FormattableValue + ConvertToSize,
+    S: ValueSource<V>,
+{
+    fn parse(capture: Option<Match<'m>>, value_src: &mut S) -> Result<Self, ()> {
+        match capture.map(|m| m.as_str()).unwrap_or("") {
+            "" => Ok(Precision::Auto),
+            "*" => value_src
+                .next_value()
+                .ok_or(())
+                .and_then(ConvertToSize::convert)
+                .map(|precision| Precision::Exactly { precision }),
+            s @ _ => parse_size(s, value_src).map(|precision| Precision::Exactly { precision }),
+        }
+    }
+}
+
 /// An iterator of `Segment`s that correspond to the parts of the formatting string being parsed.
 pub struct Parser<'p, V, M>
 where
@@ -38,80 +130,6 @@ where
     positional: &'p [V],
     named: &'p M,
     positional_iter: Iter<'p, V>,
-}
-
-/// A specifier component that can be parsed from the corresponding part of the formatting string.
-trait Parseable<'p, 'm, V, M>
-where
-    V: FormattableValue + ConvertToSize,
-    M: Map<str, V>,
-    Self: Sized,
-{
-    fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()>;
-}
-
-impl<'p, 'm, V, M, T> Parseable<'p, 'm, V, M> for T
-where
-    V: FormattableValue + ConvertToSize,
-    M: Map<str, V>,
-    T: Sized + TryFrom<&'m str, Error = ()>,
-{
-    fn parse(capture: Option<Match<'m>>, _: &mut Parser<'p, V, M>) -> Result<Self, ()> {
-        capture.map(|m| m.as_str()).unwrap_or("").try_into()
-    }
-}
-
-/// Parses a size specifier, such as width or precision. If the size is not hard-coded in the
-/// formatting string, looks up the corresponding argument and tries to convert it to `usize`.
-fn parse_size<'p, 'm, V, M>(text: &str, parser: &Parser<'p, V, M>) -> Result<usize, ()>
-where
-    V: FormattableValue + ConvertToSize,
-    M: Map<str, V>,
-{
-    if text.ends_with('$') {
-        let text = &text[..text.len() - 1];
-        let value = if text.as_bytes()[0].is_ascii_digit() {
-            text.parse()
-                .ok()
-                .and_then(|idx| parser.lookup_value_by_index(idx))
-        } else {
-            parser.lookup_value_by_name(text)
-        };
-        value.ok_or(()).and_then(ConvertToSize::convert)
-    } else {
-        text.parse().map_err(|_| ())
-    }
-}
-
-impl<'p, 'm, V, M> Parseable<'p, 'm, V, M> for Width
-where
-    V: FormattableValue + ConvertToSize,
-    M: Map<str, V>,
-{
-    fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()> {
-        match capture.map(|m| m.as_str()).unwrap_or("") {
-            "" => Ok(Width::Auto),
-            s @ _ => parse_size(s, parser).map(|width| Width::AtLeast { width }),
-        }
-    }
-}
-
-impl<'p, 'm, V, M> Parseable<'p, 'm, V, M> for Precision
-where
-    V: FormattableValue + ConvertToSize,
-    M: Map<str, V>,
-{
-    fn parse(capture: Option<Match<'m>>, parser: &mut Parser<'p, V, M>) -> Result<Self, ()> {
-        match capture.map(|m| m.as_str()).unwrap_or("") {
-            "" => Ok(Precision::Auto),
-            "*" => parser
-                .next_value()
-                .ok_or(())
-                .and_then(ConvertToSize::convert)
-                .map(|precision| Precision::Exactly { precision }),
-            s @ _ => parse_size(s, parser).map(|precision| Precision::Exactly { precision }),
-        }
-    }
 }
 
 impl<'p, V, M> Parser<'p, V, M>
@@ -217,6 +235,18 @@ where
         }
     }
 
+    fn next_value(&mut self) -> Option<&'p V> {
+        self.positional_iter.next()
+    }
+
+    fn lookup_value_by_index(&self, idx: usize) -> Option<&'p V> {
+        self.positional.get(idx)
+    }
+
+    fn lookup_value_by_name(&self, name: &str) -> Option<&'p V> {
+        self.named.get(name)
+    }
+
     fn lookup_value(&mut self, captures: &Captures) -> Option<&'p V> {
         if let Some(idx) = captures.name("index") {
             idx.as_str()
@@ -229,17 +259,23 @@ where
             self.next_value()
         }
     }
+}
 
-    fn next_value(&mut self) -> Option<&'p V> {
-        self.positional_iter.next()
+impl<'p, V, M> ValueSource<V> for Parser<'p, V, M>
+where
+    V: FormattableValue + ConvertToSize,
+    M: Map<str, V>,
+{
+    fn next_value(&mut self) -> Option<&V> {
+        (self as &mut Parser<'p, V, M>).next_value()
     }
 
-    fn lookup_value_by_index(&self, idx: usize) -> Option<&'p V> {
-        self.positional.get(idx)
+    fn lookup_value_by_index(&self, idx: usize) -> Option<&V> {
+        (self as &Parser<'p, V, M>).lookup_value_by_index(idx)
     }
 
-    fn lookup_value_by_name(&self, name: &str) -> Option<&'p V> {
-        self.named.get(name)
+    fn lookup_value_by_name(&self, name: &str) -> Option<&V> {
+        (self as &Parser<'p, V, M>).lookup_value_by_name(name)
     }
 }
 
