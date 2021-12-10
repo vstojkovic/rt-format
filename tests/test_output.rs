@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
-use rt_format::map::NoMap;
-use rt_format::Arguments;
+use rt_format::argument::NoNamedArguments;
+use rt_format::ParsedFormat;
 
 mod common;
 use common::Variant;
 
 fn fmt_args(spec: &str, args: &[Variant]) -> String {
-    format!("{}", Arguments::parse(spec, args, &NoMap).unwrap())
+    format!("{}", ParsedFormat::parse(spec, args, &NoNamedArguments).unwrap())
 }
 
 fn fmt_args_map(spec: &str, positional: &[Variant], named: &[(&str, Variant)]) -> String {
@@ -15,7 +15,7 @@ fn fmt_args_map(spec: &str, positional: &[Variant], named: &[(&str, Variant)]) -
     for (key, value) in named {
         map.insert(*key, value);
     }
-    format!("{}", Arguments::parse(spec, positional, &map).unwrap())
+    format!("{}", ParsedFormat::parse(spec, positional, &map).unwrap())
 }
 
 #[test]

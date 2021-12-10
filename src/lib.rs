@@ -9,7 +9,7 @@
 //! # Examples
 //! 
 //! ```
-//! use rt_format::{Arguments, Format, FormattableValue, Specifier};
+//! use rt_format::{Format, FormatArgument, ParsedFormat, Specifier};
 //! use std::cmp::PartialEq;
 //! use std::convert::TryInto;
 //! use std::fmt;
@@ -20,7 +20,7 @@
 //!     Float(f64),
 //! }
 //! 
-//! impl FormattableValue for Variant {
+//! impl FormatArgument for Variant {
 //!     fn supports_format(&self, spec: &Specifier) -> bool {
 //!         match self {
 //!             Self::Int(_) => true,
@@ -103,7 +103,7 @@
 //!     let mut named_args = HashMap::new();
 //!     named_args.insert("foo".to_string(), Variant::Float(42.042));
 //! 
-//!     let args = Arguments::parse("{:#x} [{0:<5}] {foo:.1$}", &pos_args, &named_args).unwrap();
+//!     let args = ParsedFormat::parse("{:#x} [{0:<5}] {foo:.1$}", &pos_args, &named_args).unwrap();
 //!     assert_eq!("0x2a [42   ] 42.04200", format!("{}", args));
 //! }
 //! ```
@@ -112,16 +112,14 @@
 mod codegen;
 
 pub mod argument;
-pub mod map;
 pub mod parser;
-pub mod value;
 
 use std::cmp::PartialEq;
 use std::convert::TryFrom;
 use std::fmt;
 
-pub use crate::argument::{Argument, Arguments};
-pub use crate::value::FormattableValue;
+pub use crate::argument::FormatArgument;
+pub use crate::parser::{ParsedFormat, Substitution};
 
 generate_code! {
     /// Specifies the alignment of an argument with a specific width.

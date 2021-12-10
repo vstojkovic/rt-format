@@ -5,12 +5,100 @@
 
 use regex::{Captures, Match};
 use std::convert::{TryFrom, TryInto};
+use std::fmt;
 use std::slice::Iter;
 
-use crate::argument::{Argument, Segment};
-use crate::map::Map;
-use crate::value::FormattableValue;
-use crate::{Align, Format, Pad, Precision, Repr, Sign, Specifier, Width};
+use crate::argument::{ArgumentFormatter, ArgumentSource, FormatArgument, NamedArguments};
+use crate::{format_value, Align, Format, Pad, Precision, Repr, Sign, Specifier, Width};
+
+/// A value and its formatting specifier.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct Substitution<'v, V: FormatArgument> {
+    specifier: Specifier,
+    value: &'v V,
+    _private: (),
+}
+
+impl<'v, V: FormatArgument> Substitution<'v, V> {
+    /// Create an `Substitution` if the given value supports the given format.
+    pub fn new(specifier: Specifier, value: &'v V) -> Result<Substitution<'v, V>, ()> {
+        if value.supports_format(&specifier) {
+            Ok(Substitution {
+                specifier,
+                value,
+                _private: (),
+            })
+        } else {
+            Err(())
+        }
+    }
+
+    /// A reference to the formatting specifier.
+    pub fn specifier(&self) -> &Specifier {
+        &self.specifier
+    }
+
+    /// A reference to the value to format.
+    pub fn value(&self) -> &'v V {
+        self.value
+    }
+}
+
+impl<'v, V: FormatArgument> fmt::Display for Substitution<'v, V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        format_value(&self.specifier, &ArgumentFormatter(self.value), f)
+    }
+}
+
+/// A single segment of a formatting string.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum Segment<'s, V: FormatArgument> {
+    /// Text to be sent to the formatter.
+    Text(&'s str),
+    /// A value ready to be formatted.
+    Substitution(Substitution<'s, V>),
+}
+
+impl<'s, V: FormatArgument> fmt::Display for Segment<'s, V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Segment::Text(text) => f.write_str(text),
+            Segment::Substitution(arg) => arg.fmt(f),
+        }
+    }
+}
+
+/// A representation of the formatting string and associated values, ready to be formatted.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParsedFormat<'a, V: FormatArgument> {
+    /// A vector of formatting string segments.
+    pub segments: Vec<Segment<'a, V>>,
+}
+
+impl<'a, V: FormatArgument + ConvertToSize> ParsedFormat<'a, V> {
+    /// Parses the formatting string, using given positional and named arguments. Does not perform
+    /// any formatting. It just parses the formatting string, validates that all the arguments are
+    /// present, and that each argument supports the requested format.
+    pub fn parse<N>(format: &'a str, positional: &'a [V], named: &'a N) -> Result<Self, usize>
+    where
+        N: NamedArguments<V>,
+    {
+        let segments: Result<Vec<Segment<'a, V>>, usize> =
+            Parser::new(format, positional, named).collect();
+        Ok(ParsedFormat {
+            segments: segments?,
+        })
+    }
+}
+
+impl<'a, V: FormatArgument> fmt::Display for ParsedFormat<'a, V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for segment in self.segments.iter() {
+            segment.fmt(f)?
+        }
+        Ok(())
+    }
+}
 
 /// A type conversion into `usize` that might fail, similar to `TryInto`. Does not consume `self`.
 pub trait ConvertToSize {
@@ -27,29 +115,11 @@ where
     }
 }
 
-/// A source of values to use when parsing the formatting string.
-pub trait ValueSource<V>
-where
-    V: FormattableValue,
-{
-    /// Returns the next positional argument, if any. Calling `lookup_value_by_index` does not
-    /// affect which value will be returned by the next call to `next_value`.
-    fn next_value(&mut self) -> Option<&V>;
-
-    /// Returns the positional argument with the given index, if any. Calling
-    /// `lookup_value_by_index` does not affect which value will be returned by the next call to
-    /// `next_value`.
-    fn lookup_value_by_index(&self, idx: usize) -> Option<&V>;
-
-    /// Returns the named argument with the given name, if any.
-    fn lookup_value_by_name(&self, name: &str) -> Option<&V>;
-}
-
 /// A specifier component that can be parsed from the corresponding part of the formatting string.
 trait Parseable<'m, V, S>
 where
-    V: FormattableValue + ConvertToSize,
-    S: ValueSource<V>,
+    V: FormatArgument + ConvertToSize,
+    S: ArgumentSource<V>,
     Self: Sized,
 {
     fn parse(capture: Option<Match<'m>>, value_src: &mut S) -> Result<Self, ()>;
@@ -57,8 +127,8 @@ where
 
 impl<'m, V, S, T> Parseable<'m, V, S> for T
 where
-    V: FormattableValue + ConvertToSize,
-    S: ValueSource<V>,
+    V: FormatArgument + ConvertToSize,
+    S: ArgumentSource<V>,
     T: Sized + TryFrom<&'m str, Error = ()>,
 {
     fn parse(capture: Option<Match<'m>>, _: &mut S) -> Result<Self, ()> {
@@ -70,17 +140,17 @@ where
 /// formatting string, looks up the corresponding argument and tries to convert it to `usize`.
 fn parse_size<'m, V, S>(text: &str, value_src: &S) -> Result<usize, ()>
 where
-    V: FormattableValue + ConvertToSize,
-    S: ValueSource<V>,
+    V: FormatArgument + ConvertToSize,
+    S: ArgumentSource<V>,
 {
     if text.ends_with('$') {
         let text = &text[..text.len() - 1];
         let value = if text.as_bytes()[0].is_ascii_digit() {
             text.parse()
                 .ok()
-                .and_then(|idx| value_src.lookup_value_by_index(idx))
+                .and_then(|idx| value_src.lookup_argument_by_index(idx))
         } else {
-            value_src.lookup_value_by_name(text)
+            value_src.lookup_argument_by_name(text)
         };
         value.ok_or(()).and_then(ConvertToSize::convert)
     } else {
@@ -90,8 +160,8 @@ where
 
 impl<'m, V, S> Parseable<'m, V, S> for Width
 where
-    V: FormattableValue + ConvertToSize,
-    S: ValueSource<V>,
+    V: FormatArgument + ConvertToSize,
+    S: ArgumentSource<V>,
 {
     fn parse(capture: Option<Match<'m>>, value_src: &mut S) -> Result<Self, ()> {
         match capture.map(|m| m.as_str()).unwrap_or("") {
@@ -103,14 +173,14 @@ where
 
 impl<'m, V, S> Parseable<'m, V, S> for Precision
 where
-    V: FormattableValue + ConvertToSize,
-    S: ValueSource<V>,
+    V: FormatArgument + ConvertToSize,
+    S: ArgumentSource<V>,
 {
     fn parse(capture: Option<Match<'m>>, value_src: &mut S) -> Result<Self, ()> {
         match capture.map(|m| m.as_str()).unwrap_or("") {
             "" => Ok(Precision::Auto),
             "*" => value_src
-                .next_value()
+                .next_argument()
                 .ok_or(())
                 .and_then(ConvertToSize::convert)
                 .map(|precision| Precision::Exactly { precision }),
@@ -137,8 +207,8 @@ macro_rules! SPEC_REGEX_FRAG {
 
 fn parse_specifier_captures<V, S>(captures: &Captures, value_src: &mut S) -> Result<Specifier, ()>
 where
-    V: FormattableValue + ConvertToSize,
-    S: ValueSource<V>,
+    V: FormatArgument + ConvertToSize,
+    S: ArgumentSource<V>,
 {
     Ok(Specifier {
         align: Align::parse(captures.name("align"), value_src)?,
@@ -155,8 +225,8 @@ where
 /// argument specification "{foo:#X}", this function would parse only the "#X" part.
 pub fn parse_specifier<V, S>(spec_str: &str, value_src: &mut S) -> Result<Specifier, ()>
 where
-    V: FormattableValue + ConvertToSize,
-    S: ValueSource<V>,
+    V: FormatArgument + ConvertToSize,
+    S: ArgumentSource<V>,
 {
     use lazy_static::lazy_static;
     use regex::Regex;
@@ -172,26 +242,26 @@ where
 }
 
 /// An iterator of `Segment`s that correspond to the parts of the formatting string being parsed.
-pub struct Parser<'p, V, M>
+pub struct Parser<'p, V, N>
 where
-    V: FormattableValue + ConvertToSize,
-    M: Map<str, V>,
+    V: FormatArgument + ConvertToSize,
+    N: NamedArguments<V>,
 {
     unparsed: &'p str,
     parsed_len: usize,
     positional: &'p [V],
-    named: &'p M,
+    named: &'p N,
     positional_iter: Iter<'p, V>,
 }
 
-impl<'p, V, M> Parser<'p, V, M>
+impl<'p, V, N> Parser<'p, V, N>
 where
-    V: FormattableValue + ConvertToSize,
-    M: Map<str, V>,
+    V: FormatArgument + ConvertToSize,
+    N: NamedArguments<V>,
 {
     /// Creates a new `Parser` for the given formatting string, positional arguments, and named
     /// arguments.
-    pub fn new(format: &'p str, positional: &'p [V], named: &'p M) -> Self {
+    pub fn new(format: &'p str, positional: &'p [V], named: &'p N) -> Self {
         Parser {
             unparsed: format,
             parsed_len: 0,
@@ -222,11 +292,11 @@ where
         } else if self.unparsed.as_bytes()[0] == self.unparsed.as_bytes()[1] {
             Ok(self.advance_and_return(2, Segment::Text(&self.unparsed[..1])))
         } else {
-            self.parse_argument()
+            self.parse_substitution()
         }
     }
 
-    fn parse_argument(&mut self) -> Result<Segment<'p, V>, usize> {
+    fn parse_substitution(&mut self) -> Result<Segment<'p, V>, usize> {
         use lazy_static::lazy_static;
         use regex::Regex;
 
@@ -253,13 +323,13 @@ where
             None => self.error(),
             Some(captures) => match parse_specifier_captures(&captures, self) {
                 Ok(specifier) => self
-                    .lookup_value(&captures)
+                    .lookup_argument(&captures)
                     .ok_or(())
-                    .and_then(|value| Argument::new(specifier, value))
+                    .and_then(|value| Substitution::new(specifier, value))
                     .map(|arg| {
                         self.advance_and_return(
                             captures.get(0).unwrap().end(),
-                            Segment::Argument(arg),
+                            Segment::Substitution(arg),
                         )
                     })
                     .or_else(|_| self.error()),
@@ -268,54 +338,54 @@ where
         }
     }
 
-    fn next_value(&mut self) -> Option<&'p V> {
+    fn next_argument(&mut self) -> Option<&'p V> {
         self.positional_iter.next()
     }
 
-    fn lookup_value_by_index(&self, idx: usize) -> Option<&'p V> {
+    fn lookup_argument_by_index(&self, idx: usize) -> Option<&'p V> {
         self.positional.get(idx)
     }
 
-    fn lookup_value_by_name(&self, name: &str) -> Option<&'p V> {
+    fn lookup_argument_by_name(&self, name: &str) -> Option<&'p V> {
         self.named.get(name)
     }
 
-    fn lookup_value(&mut self, captures: &Captures) -> Option<&'p V> {
+    fn lookup_argument(&mut self, captures: &Captures) -> Option<&'p V> {
         if let Some(idx) = captures.name("index") {
             idx.as_str()
                 .parse::<usize>()
                 .ok()
-                .and_then(|idx| self.lookup_value_by_index(idx))
+                .and_then(|idx| self.lookup_argument_by_index(idx))
         } else if let Some(name) = captures.name("name") {
-            self.lookup_value_by_name(name.as_str())
+            self.lookup_argument_by_name(name.as_str())
         } else {
-            self.next_value()
+            self.next_argument()
         }
     }
 }
 
-impl<'p, V, M> ValueSource<V> for Parser<'p, V, M>
+impl<'p, V, N> ArgumentSource<V> for Parser<'p, V, N>
 where
-    V: FormattableValue + ConvertToSize,
-    M: Map<str, V>,
+    V: FormatArgument + ConvertToSize,
+    N: NamedArguments<V>,
 {
-    fn next_value(&mut self) -> Option<&V> {
-        (self as &mut Parser<'p, V, M>).next_value()
+    fn next_argument(&mut self) -> Option<&V> {
+        (self as &mut Parser<'p, V, N>).next_argument()
     }
 
-    fn lookup_value_by_index(&self, idx: usize) -> Option<&V> {
-        (self as &Parser<'p, V, M>).lookup_value_by_index(idx)
+    fn lookup_argument_by_index(&self, idx: usize) -> Option<&V> {
+        (self as &Parser<'p, V, N>).lookup_argument_by_index(idx)
     }
 
-    fn lookup_value_by_name(&self, name: &str) -> Option<&V> {
-        (self as &Parser<'p, V, M>).lookup_value_by_name(name)
+    fn lookup_argument_by_name(&self, name: &str) -> Option<&V> {
+        (self as &Parser<'p, V, N>).lookup_argument_by_name(name)
     }
 }
 
-impl<'p, V, M> Iterator for Parser<'p, V, M>
+impl<'p, V, N> Iterator for Parser<'p, V, N>
 where
-    V: FormattableValue + ConvertToSize,
-    M: Map<str, V>,
+    V: FormatArgument + ConvertToSize,
+    N: NamedArguments<V>,
 {
     type Item = Result<Segment<'p, V>, usize>;
 

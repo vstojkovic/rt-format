@@ -4,7 +4,7 @@ use std::cmp::PartialEq;
 use std::convert::TryInto;
 use std::fmt;
 
-use rt_format::{Format, FormattableValue, Specifier};
+use rt_format::{Format, FormatArgument, Specifier};
 
 #[derive(Debug, PartialEq)]
 #[allow(dead_code)]
@@ -13,7 +13,7 @@ pub enum Variant {
     Float(f64),
 }
 
-impl FormattableValue for Variant {
+impl FormatArgument for Variant {
     fn supports_format(&self, spec: &Specifier) -> bool {
         match self {
             Self::Int(_) => true,

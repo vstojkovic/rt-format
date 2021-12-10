@@ -1,99 +1,138 @@
-//! Provides types that hold the values to format and their associated formatting specifications.
+//! Defines traits and types to help make arbitrary values formattable at runtime.
 
+use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::fmt;
+use std::hash::Hash;
 
-use crate::map::Map;
-use crate::parser::ConvertToSize;
-use crate::value::{FormattableValue, ValueFormatter};
-use crate::{format_value, Specifier};
+use crate::Specifier;
 
-/// A value and its formatting specifier.
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Argument<'v, V: FormattableValue> {
-    specifier: Specifier,
-    value: &'v V,
-    _private: (),
+/// A type that indicates whether its value supports a specific format, and provides formatting
+/// functions that correspond to different format types.
+pub trait FormatArgument {
+    /// Returns `true` if `self` can be formatted using the given specifier.
+    fn supports_format(&self, specifier: &Specifier) -> bool;
+    /// Formats the value the way it would be formatted if it implemented `std::fmt::Display`.
+    fn fmt_display(&self, f: &mut fmt::Formatter) -> fmt::Result;
+    /// Formats the value the way it would be formatted if it implemented `std::fmt::Debug`.
+    fn fmt_debug(&self, f: &mut fmt::Formatter) -> fmt::Result;
+    /// Formats the value the way it would be formatted if it implemented `std::fmt::Octal`.
+    fn fmt_octal(&self, f: &mut fmt::Formatter) -> fmt::Result;
+    /// Formats the value the way it would be formatted if it implemented `std::fmt::LowerHex`.
+    fn fmt_lower_hex(&self, f: &mut fmt::Formatter) -> fmt::Result;
+    /// Formats the value the way it would be formatted if it implemented `std::fmt::UpperHex`.
+    fn fmt_upper_hex(&self, f: &mut fmt::Formatter) -> fmt::Result;
+    /// Formats the value the way it would be formatted if it implemented `std::fmt::Binary`.
+    fn fmt_binary(&self, f: &mut fmt::Formatter) -> fmt::Result;
+    /// Formats the value the way it would be formatted if it implemented `std::fmt::LowerExp`.
+    fn fmt_lower_exp(&self, f: &mut fmt::Formatter) -> fmt::Result;
+    /// Formats the value the way it would be formatted if it implemented `std::fmt::UpperExp`.
+    fn fmt_upper_exp(&self, f: &mut fmt::Formatter) -> fmt::Result;
 }
 
-impl<'v, V: FormattableValue> Argument<'v, V> {
-    /// Create an `Argument` if the given value supports the given format.
-    pub fn new(specifier: Specifier, value: &'v V) -> Result<Argument<'v, V>, ()> {
-        if value.supports_format(&specifier) {
-            Ok(Argument {
-                specifier,
-                value,
-                _private: (),
-            })
-        } else {
-            Err(())
-        }
-    }
+/// Holds a `FormatArgument` and implements all the `std::fmt` formatting traits.
+pub struct ArgumentFormatter<'v, V: FormatArgument>(pub &'v V);
 
-    /// A reference to the formatting specifier.
-    pub fn specifier(&self) -> &Specifier {
-        &self.specifier
-    }
-
-    /// A reference to the value to format.
-    pub fn value(&self) -> &'v V {
-        self.value
-    }
-}
-
-impl<'v, V: FormattableValue> fmt::Display for Argument<'v, V> {
+impl<'v, V: FormatArgument> fmt::Display for ArgumentFormatter<'v, V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        format_value(&self.specifier, &ValueFormatter(self.value), f)
+        self.0.fmt_display(f)
     }
 }
 
-/// A single segment of a formatting string.
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Segment<'s, V: FormattableValue> {
-    /// Text to be sent to the formatter.
-    Text(&'s str),
-    /// A value ready to be formatted.
-    Argument(Argument<'s, V>),
-}
-
-impl<'s, V: FormattableValue> fmt::Display for Segment<'s, V> {
+impl<'v, V: FormatArgument> fmt::Debug for ArgumentFormatter<'v, V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Segment::Text(text) => f.write_str(text),
-            Segment::Argument(arg) => arg.fmt(f),
-        }
+        self.0.fmt_debug(f)
     }
 }
 
-/// A representation of the formatting string and associated values, ready to be formatted.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Arguments<'a, V: FormattableValue> {
-    /// A vector of formatting string segments.
-    pub segments: Vec<Segment<'a, V>>,
-}
-
-impl<'a, V: FormattableValue + ConvertToSize> Arguments<'a, V> {
-    /// Parses the formatting string, using given positional and named arguments. Does not perform
-    /// any formatting. It just parses the formatting string, validates that all the arguments are
-    /// present, and that each argument supports the requested format.
-    pub fn parse<M>(format: &'a str, positional: &'a [V], named: &'a M) -> Result<Self, usize>
-    where
-        M: Map<str, V>,
-    {
-        use crate::parser::Parser;
-
-        let segments: Result<Vec<Segment<'a, V>>, usize> =
-            Parser::new(format, positional, named).collect();
-        Ok(Arguments {
-            segments: segments?,
-        })
-    }
-}
-
-impl<'a, V: FormattableValue> fmt::Display for Arguments<'a, V> {
+impl<'v, V: FormatArgument> fmt::Octal for ArgumentFormatter<'v, V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for segment in self.segments.iter() {
-            segment.fmt(f)?
-        }
-        Ok(())
+        self.0.fmt_octal(f)
     }
+}
+
+impl<'v, V: FormatArgument> fmt::LowerHex for ArgumentFormatter<'v, V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt_lower_hex(f)
+    }
+}
+
+impl<'v, V: FormatArgument> fmt::UpperHex for ArgumentFormatter<'v, V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt_upper_hex(f)
+    }
+}
+
+impl<'v, V: FormatArgument> fmt::Binary for ArgumentFormatter<'v, V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt_binary(f)
+    }
+}
+
+impl<'v, V: FormatArgument> fmt::LowerExp for ArgumentFormatter<'v, V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt_lower_exp(f)
+    }
+}
+
+impl<'v, V: FormatArgument> fmt::UpperExp for ArgumentFormatter<'v, V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt_upper_exp(f)
+    }
+}
+
+/// A type that associates an argument with a name.
+pub trait NamedArguments<V: FormatArgument> {
+    /// Returns a reference to the argument associated with the given name, if any.
+    fn get(&self, key: &str) -> Option<&V>;
+}
+
+impl<K, V> NamedArguments<V> for HashMap<K, V>
+where
+    K: Borrow<str> + Hash + Eq,
+    V: FormatArgument,
+{
+    fn get(&self, key: &str) -> Option<&V> {
+        <HashMap<K, V>>::get(self, key)
+    }
+}
+
+impl<K, V> NamedArguments<V> for HashMap<K, &V>
+where
+    K: Borrow<str> + Hash + Eq,
+    V: FormatArgument,
+{
+    fn get(&self, key: &str) -> Option<&V> {
+        <HashMap<K, &V>>::get(self, key).map(|v| *v)
+    }
+}
+
+/// A `NamedArguments` implementation that always returns `None`.
+pub struct NoNamedArguments;
+
+impl<V> NamedArguments<V> for NoNamedArguments
+where
+    V: FormatArgument,
+{
+    fn get(&self, _: &str) -> Option<&V> {
+        None
+    }
+}
+
+/// A source of values to use when parsing the formatting string.
+pub trait ArgumentSource<V>
+where
+    V: FormatArgument,
+{
+    /// Returns the next positional argument, if any. Calling `lookup_argument_by_index` does not
+    /// affect which value will be returned by the next call to `next_argument`.
+    fn next_argument(&mut self) -> Option<&V>;
+
+    /// Returns the positional argument with the given index, if any. Calling
+    /// `lookup_argument_by_index` does not affect which value will be returned by the next call to
+    /// `next_argument`.
+    fn lookup_argument_by_index(&self, idx: usize) -> Option<&V>;
+
+    /// Returns the named argument with the given name, if any.
+    fn lookup_argument_by_name(&self, name: &str) -> Option<&V>;
 }
