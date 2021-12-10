@@ -1,25 +1,35 @@
 use std::collections::HashMap;
 
-use rt_format::argument::{ArgumentSource, NoNamedArguments};
+use rt_format::argument::{
+    ArgumentSource, NamedArguments, NoNamedArguments, NoPositionalArguments, PositionalArguments
+};
 use rt_format::parser::{parse_specifier};
 use rt_format::{Align, ParsedFormat, Format, Pad, Precision, Repr, Sign, Specifier, Width};
 
 mod common;
 use common::Variant;
 
-const NO_ARGS: &[Variant] = &[];
+type ParseResult<'a> = Result<ParsedFormat<'a, Variant>, usize> ;
+
+fn parse<'a, P, N>(format: &'a str, positional: &'a P, named: &'a N) -> ParseResult<'a>
+where
+    P: PositionalArguments<'a, Variant>,
+    N: NamedArguments<Variant>,
+{
+    ParsedFormat::parse(format, positional, named)
+}
 
 #[test]
 fn unmatched_brace() {
-    assert_eq!(Err(4), ParsedFormat::parse("foo {", NO_ARGS, &NoNamedArguments));
-    assert_eq!(Err(4), ParsedFormat::parse("bar } baz", NO_ARGS, &NoNamedArguments));
+    assert_eq!(Err(4), parse("foo {", &NoPositionalArguments, &NoNamedArguments));
+    assert_eq!(Err(4), parse("bar } baz", &NoPositionalArguments, &NoNamedArguments));
 }
 
 #[test]
 fn escaped_braces() {
     assert_eq!(
         "{}",
-        ParsedFormat::parse("{{}}", NO_ARGS, &NoNamedArguments)
+        parse("{{}}", &NoPositionalArguments, &NoNamedArguments)
             .unwrap()
             .to_string()
     );
@@ -29,7 +39,7 @@ fn escaped_braces() {
 fn invalid_specifier() {
     assert_eq!(
         Err(4),
-        ParsedFormat::parse("foo {:Z} bar", &[Variant::Int(42)], &NoNamedArguments)
+        parse("foo {:Z} bar", &[Variant::Int(42)], &NoNamedArguments)
     );
 }
 
@@ -37,7 +47,7 @@ fn invalid_specifier() {
 fn invalid_arg_position() {
     assert_eq!(
         Err(4),
-        ParsedFormat::parse("foo {0bar} baz", &[Variant::Int(42)], &NoNamedArguments)
+        parse("foo {0bar} baz", &[Variant::Int(42)], &NoNamedArguments)
     );
 }
 
@@ -45,7 +55,7 @@ fn invalid_arg_position() {
 fn positional_arg_iter() {
     assert_eq!(
         "42 42.042",
-        ParsedFormat::parse("{} {}", &[Variant::Int(42), Variant::Float(42.042)], &NoNamedArguments)
+        parse("{} {}", &[Variant::Int(42), Variant::Float(42.042)], &NoNamedArguments)
             .unwrap()
             .to_string()
     );
@@ -55,7 +65,7 @@ fn positional_arg_iter() {
 fn positional_arg_lookup() {
     assert_eq!(
         "42.042",
-        ParsedFormat::parse("{1}", &[Variant::Int(42), Variant::Float(42.042)], &NoNamedArguments)
+        parse("{1}", &[Variant::Int(42), Variant::Float(42.042)], &NoNamedArguments)
             .unwrap()
             .to_string()
     );
@@ -67,7 +77,7 @@ fn named_arg_lookup() {
     map.insert("arglebargle".to_string(), Variant::Float(-42.042));
     assert_eq!(
         "-42.042",
-        ParsedFormat::parse("{arglebargle}", NO_ARGS, &map)
+        parse("{arglebargle}", &NoPositionalArguments, &map)
             .unwrap()
             .to_string()
     );
@@ -77,25 +87,25 @@ fn named_arg_lookup() {
 fn missing_next_arg() {
     assert_eq!(
         Err(3),
-        ParsedFormat::parse("{} {}", &[Variant::Int(42)], &NoNamedArguments)
+        parse("{} {}", &[Variant::Int(42)], &NoNamedArguments)
     );
 }
 
 #[test]
 fn missing_positional_arg() {
-    assert_eq!(Err(0), ParsedFormat::parse("{1}", &[Variant::Int(42)], &NoNamedArguments));
+    assert_eq!(Err(0), parse("{1}", &[Variant::Int(42)], &NoNamedArguments));
 }
 
 #[test]
 fn missing_named_arg() {
-    assert_eq!(Err(0), ParsedFormat::parse("{arglebargle}", NO_ARGS, &NoNamedArguments));
+    assert_eq!(Err(0), parse("{arglebargle}", &NoPositionalArguments, &NoNamedArguments));
 }
 
 #[test]
 fn missing_positional_width() {
     assert_eq!(
         Err(0),
-        ParsedFormat::parse("{:1$}", &[Variant::Int(42)], &NoNamedArguments)
+        parse("{:1$}", &[Variant::Int(42)], &NoNamedArguments)
     );
 }
 
@@ -103,7 +113,7 @@ fn missing_positional_width() {
 fn missing_named_width() {
     assert_eq!(
         Err(0),
-        ParsedFormat::parse("{:arglebargle$}", &[Variant::Int(42)], &NoNamedArguments)
+        parse("{:arglebargle$}", &[Variant::Int(42)], &NoNamedArguments)
     );
 }
 
@@ -111,7 +121,7 @@ fn missing_named_width() {
 fn missing_positional_precision() {
     assert_eq!(
         Err(0),
-        ParsedFormat::parse("{:.1$}", &[Variant::Int(42)], &NoNamedArguments)
+        parse("{:.1$}", &[Variant::Int(42)], &NoNamedArguments)
     );
 }
 
@@ -119,7 +129,7 @@ fn missing_positional_precision() {
 fn missing_named_precision() {
     assert_eq!(
         Err(0),
-        ParsedFormat::parse("{:.arglebargle$}", &[Variant::Int(42)], &NoNamedArguments)
+        parse("{:.arglebargle$}", &[Variant::Int(42)], &NoNamedArguments)
     );
 }
 
@@ -127,7 +137,7 @@ fn missing_named_precision() {
 fn missing_asterisk_precision() {
     assert_eq!(
         Err(3),
-        ParsedFormat::parse("{} {0:.*}", &[Variant::Int(42)], &NoNamedArguments)
+        parse("{} {0:.*}", &[Variant::Int(42)], &NoNamedArguments)
     );
 }
 

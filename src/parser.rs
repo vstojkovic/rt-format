@@ -6,9 +6,10 @@
 use regex::{Captures, Match};
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
-use std::slice::Iter;
 
-use crate::argument::{ArgumentFormatter, ArgumentSource, FormatArgument, NamedArguments};
+use crate::argument::{
+    ArgumentFormatter, ArgumentSource, FormatArgument, NamedArguments, PositionalArguments
+};
 use crate::{format_value, Align, Format, Pad, Precision, Repr, Sign, Specifier, Width};
 
 /// A value and its formatting specifier.
@@ -79,8 +80,9 @@ impl<'a, V: FormatArgument + ConvertToSize> ParsedFormat<'a, V> {
     /// Parses the formatting string, using given positional and named arguments. Does not perform
     /// any formatting. It just parses the formatting string, validates that all the arguments are
     /// present, and that each argument supports the requested format.
-    pub fn parse<N>(format: &'a str, positional: &'a [V], named: &'a N) -> Result<Self, usize>
+    pub fn parse<P, N>(format: &'a str, positional: &'a P, named: &'a N) -> Result<Self, usize>
     where
+        P: PositionalArguments<'a, V> + ?Sized,
         N: NamedArguments<V>,
     {
         let segments: Result<Vec<Segment<'a, V>>, usize> =
@@ -93,7 +95,7 @@ impl<'a, V: FormatArgument + ConvertToSize> ParsedFormat<'a, V> {
 
 impl<'a, V: FormatArgument> fmt::Display for ParsedFormat<'a, V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for segment in self.segments.iter() {
+        for segment in &self.segments {
             segment.fmt(f)?
         }
         Ok(())
@@ -242,26 +244,28 @@ where
 }
 
 /// An iterator of `Segment`s that correspond to the parts of the formatting string being parsed.
-pub struct Parser<'p, V, N>
+pub struct Parser<'p, V, P, N>
 where
     V: FormatArgument + ConvertToSize,
+    P: PositionalArguments<'p, V> + ?Sized,
     N: NamedArguments<V>,
 {
     unparsed: &'p str,
     parsed_len: usize,
-    positional: &'p [V],
+    positional: &'p P,
     named: &'p N,
-    positional_iter: Iter<'p, V>,
+    positional_iter: P::Iter,
 }
 
-impl<'p, V, N> Parser<'p, V, N>
+impl<'p, V, P, N> Parser<'p, V, P, N>
 where
     V: FormatArgument + ConvertToSize,
+    P: PositionalArguments<'p, V> + ?Sized,
     N: NamedArguments<V>,
 {
     /// Creates a new `Parser` for the given formatting string, positional arguments, and named
     /// arguments.
-    pub fn new(format: &'p str, positional: &'p [V], named: &'p N) -> Self {
+    pub fn new(format: &'p str, positional: &'p P, named: &'p N) -> Self {
         Parser {
             unparsed: format,
             parsed_len: 0,
@@ -364,27 +368,29 @@ where
     }
 }
 
-impl<'p, V, N> ArgumentSource<V> for Parser<'p, V, N>
+impl<'p, V, P, N> ArgumentSource<V> for Parser<'p, V, P, N>
 where
     V: FormatArgument + ConvertToSize,
+    P: PositionalArguments<'p, V> + ?Sized,
     N: NamedArguments<V>,
 {
     fn next_argument(&mut self) -> Option<&V> {
-        (self as &mut Parser<'p, V, N>).next_argument()
+        (self as &mut Parser<'p, V, P, N>).next_argument()
     }
 
     fn lookup_argument_by_index(&self, idx: usize) -> Option<&V> {
-        (self as &Parser<'p, V, N>).lookup_argument_by_index(idx)
+        (self as &Parser<'p, V, P, N>).lookup_argument_by_index(idx)
     }
 
     fn lookup_argument_by_name(&self, name: &str) -> Option<&V> {
-        (self as &Parser<'p, V, N>).lookup_argument_by_name(name)
+        (self as &Parser<'p, V, P, N>).lookup_argument_by_name(name)
     }
 }
 
-impl<'p, V, N> Iterator for Parser<'p, V, N>
+impl<'p, V, P, N> Iterator for Parser<'p, V, P, N>
 where
     V: FormatArgument + ConvertToSize,
+    P: PositionalArguments<'p, V> + ?Sized,
     N: NamedArguments<V>,
 {
     type Item = Result<Segment<'p, V>, usize>;

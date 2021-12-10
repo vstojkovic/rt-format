@@ -119,6 +119,55 @@ where
     }
 }
 
+/// A type that provides a list of arguments, randomly accessible by their position.
+pub trait PositionalArguments<'v, V>
+where
+    V: 'v + FormatArgument,
+{
+    /// The type of the iterator that can be used to iterate over arguments.
+    type Iter: Iterator<Item = &'v V>;
+
+    /// Returns a reference to the argument at the given index, if any.
+    fn get(&self, index: usize) -> Option<&V>;
+
+    /// Creates an iterator over the arguments.
+    fn iter(&'v self) -> Self::Iter;
+}
+
+impl<'v, V, T> PositionalArguments<'v, V> for T
+where
+    V: 'v + FormatArgument,
+    T: AsRef<[V]> + ?Sized,
+{
+    type Iter = std::slice::Iter<'v, V>;
+
+    fn get(&self, index: usize) -> Option<&V> {
+        <[V]>::get(self.as_ref(), index)
+    }
+
+    fn iter(&'v self) -> Self::Iter {
+        <[V]>::iter(self.as_ref())
+    }
+}
+
+/// A 'PositionalArguments` implementation that always returns `None`.
+pub struct NoPositionalArguments;
+
+impl<'v, V> PositionalArguments<'v, V> for NoPositionalArguments
+where
+    V: 'v + FormatArgument,
+{
+    type Iter = std::iter::Empty<&'v V>;
+
+    fn get(&self, _: usize) -> Option<&V> {
+        None
+    }
+
+    fn iter(&'v self) -> Self::Iter {
+        std::iter::empty()
+    }
+}
+
 /// A source of values to use when parsing the formatting string.
 pub trait ArgumentSource<V>
 where
