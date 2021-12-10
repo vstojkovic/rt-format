@@ -118,7 +118,7 @@ use std::cmp::PartialEq;
 use std::convert::TryFrom;
 use std::fmt;
 
-pub use crate::argument::FormatArgument;
+pub use crate::argument::{FormatArgument, NoNamedArguments, NoPositionalArguments};
 pub use crate::parser::{ParsedFormat, Substitution};
 
 generate_code! {
