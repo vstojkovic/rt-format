@@ -173,3 +173,60 @@ generate_code! {
         UpperExp => "E",
     }
 }
+
+impl Default for Specifier {
+    fn default() -> Self {
+        Specifier {
+            align: Align::None,
+            sign: Sign::Default,
+            repr: Repr::Default,
+            pad: Pad::Space,
+            width: Width::Auto,
+            precision: Precision::Auto,
+            format: Format::Display,
+        }
+    }
+}
+
+impl fmt::Display for Specifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Specifier { align, sign, repr, pad, width, precision, format } = self;
+        match align {
+            Align::None => (),
+            Align::Left => write!(f, "<")?,
+            Align::Center => write!(f, "^")?,
+            Align::Right => write!(f, ">")?,
+        }
+        match sign {
+            Sign::Default => (),
+            Sign::Always => write!(f, "+")?,
+        }
+        match repr {
+            Repr::Default => (),
+            Repr::Alt => write!(f, "#")?,
+        }
+        match pad {
+            Pad::Space => (),
+            Pad::Zero => write!(f, "0")?,
+        }
+        match width {
+            Width::Auto => (),
+            Width::AtLeast { width } => write!(f, "{}", width)?,
+        }
+        match precision {
+            Precision::Auto => (),
+            Precision::Exactly { precision } => write!(f, ".{}", precision)?,
+        }
+        match format {
+            Format::Display => (),
+            Format::Debug => write!(f, "?")?,
+            Format::Octal => write!(f, "o")?,
+            Format::LowerHex => write!(f, "x")?,
+            Format::UpperHex => write!(f, "X")?,
+            Format::Binary => write!(f, "b")?,
+            Format::LowerExp => write!(f, "e")?,
+            Format::UpperExp => write!(f, "E")?,
+        }
+        Ok(())
+    }
+}
