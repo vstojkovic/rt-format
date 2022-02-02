@@ -62,6 +62,7 @@ macro_rules! generate_code {
                 ),+
             }
             generate_code!(@enum_try_from $type [] [$(($lit $variant $({$($var_field)+})?))+]);
+            generate_code!(@enum_display $type [] [$(($lit $variant $({$($var_field)+})?))+]);
         )+
 
         /// The specification for the format of an argument in the formatting string.
@@ -78,6 +79,28 @@ macro_rules! generate_code {
                 [$field $type $([$lit $variant $([$($var_field)+])?])+]
             )+
         );
+
+        impl Default for Specifier {
+            fn default() -> Self {
+                Self {
+                    $(
+                        $field: generate_code!(@first_variant $type $($variant)+)
+                    ),+
+                }
+            }
+        }
+
+        impl fmt::Display for Specifier {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(
+                    f,
+                    concat!($("{", stringify!($field), "}"),+),
+                    $(
+                        $field=self.$field
+                    ),+
+                )
+            }
+        }
     };
     (@enum_try_from
         $type:ident [$($munched:tt)*] [($lit:literal $variant:ident) $($tail:tt)*]
@@ -101,6 +124,27 @@ macro_rules! generate_code {
             }
         }
     };
+    (@enum_display
+        $type:ident [$($munched:tt)*] [($lit:literal $variant:ident) $($tail:tt)*]
+    ) => {
+        generate_code!(@enum_display $type [$($munched)* ($lit $variant)] [$($tail)*]);
+    };
+    (@enum_display
+        $type:ident [$($munched:tt)*] [($lit:literal $variant:ident $_:tt) $($tail:tt)*]
+    ) => {
+    };
+    (@enum_display
+        $type:ident [$(($lit:literal $variant:ident))+] []
+    ) => {
+        impl fmt::Display for $type {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self {
+                    $($type::$variant => write!(f, $lit),)+
+                }
+            }
+        }
+    };
+    (@first_variant $type:ident $first:ident $($rest:ident)*) => { $type::$first };
     (@fn_format_value $($dim:tt)+) => {
         /// Formats the given value using the given formatter and the given format specification.
         /// 
