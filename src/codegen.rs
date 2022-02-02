@@ -117,7 +117,7 @@ macro_rules! generate_code {
         impl TryFrom<&str> for $type {
             type Error = ();
             fn try_from(value: &str) -> Result<Self, Self::Error> {
-                match value.as_ref() {
+                match value {
                     $($lit => Ok($type::$variant),)+
                     _ => Err(())
                 }
