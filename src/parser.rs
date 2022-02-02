@@ -102,7 +102,9 @@ impl<'a, V: FormatArgument> fmt::Display for ParsedFormat<'a, V> {
     }
 }
 
-/// A type conversion into `usize` that might fail, similar to `TryInto`. Does not consume `self`.
+/// A type conversion into `usize` that might fail. Like `TryInto<usize>`, but does not consume
+/// `self`. The parser needs this trait to support formats whose width or precision use "dollar
+/// syntax". For more information about these, see [std::fmt].
 pub trait ConvertToSize {
     /// Tries perform the conversion.
     fn convert(&self) -> Result<usize, ()>;
@@ -224,7 +226,7 @@ where
 }
 
 /// Parses only the format specifier portion of a format argument. For example, in a format
-/// argument specification "{foo:#X}", this function would parse only the "#X" part.
+/// argument specification `{foo:#X}`, this function would parse only the `#X` part.
 pub fn parse_specifier<V, S>(spec_str: &str, value_src: &mut S) -> Result<Specifier, ()>
 where
     V: FormatArgument + ConvertToSize,
