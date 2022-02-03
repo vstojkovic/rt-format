@@ -9,7 +9,7 @@
 //! # Examples
 //! 
 //! ```
-//! use rt_format::{ConvertToSize, Format, FormatArgument, ParsedFormat, Specifier};
+//! use rt_format::{Format, FormatArgument, ParsedFormat, Specifier};
 //! use std::cmp::PartialEq;
 //! use std::fmt;
 //!
@@ -82,10 +82,8 @@
 //!             Self::Float(val) => fmt::UpperExp::fmt(&val, f),
 //!         }
 //!     }
-//! }
 //! 
-//! impl ConvertToSize for Variant {
-//!     fn convert(&self) -> Result<usize, ()> {
+//!     fn to_usize(&self) -> Result<usize, ()> {
 //!         use std::convert::TryInto;
 //!         match self {
 //!             Variant::Int(val) => (*val).try_into().map_err(|_| ()),
@@ -118,7 +116,7 @@ use std::convert::TryFrom;
 use std::fmt;
 
 pub use crate::argument::{FormatArgument, NoNamedArguments, NoPositionalArguments};
-pub use crate::parser::{ConvertToSize, ParsedFormat, Substitution};
+pub use crate::parser::{ParsedFormat, Substitution};
 
 generate_code! {
     /// Specifies the alignment of an argument with a specific width.

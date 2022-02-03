@@ -76,11 +76,8 @@ impl FormatArgument for Variant {
             Self::Float(val) => fmt::UpperExp::fmt(&val, f),
         }
     }
-}
 
-impl TryInto<usize> for &Variant {
-    type Error = ();
-    fn try_into(self) -> Result<usize, Self::Error> {
+    fn to_usize(&self) -> Result<usize, ()> {
         match self {
             Variant::Int(val) => (*val).try_into().map_err(|_| ()),
             Variant::Float(_) => Err(()),

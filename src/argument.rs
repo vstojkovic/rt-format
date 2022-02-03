@@ -28,6 +28,13 @@ pub trait FormatArgument {
     fn fmt_lower_exp(&self, f: &mut fmt::Formatter) -> fmt::Result;
     /// Formats the value the way it would be formatted if it implemented `std::fmt::UpperExp`.
     fn fmt_upper_exp(&self, f: &mut fmt::Formatter) -> fmt::Result;
+    /// Performs a type conversion into `usize` that might fail. Like `TryInto<usize>`, but does not
+    /// consume `self`. The parser uses this to support formats whose width or precision use "dollar
+    /// syntax". For more information about these, see [std::fmt]. The default implementation always
+    /// returns an error.
+    fn to_usize(&self) -> Result<usize, ()> {
+        Err(())
+    }
 }
 
 /// Holds a `FormatArgument` and implements all the `std::fmt` formatting traits.

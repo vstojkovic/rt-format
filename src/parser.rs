@@ -76,7 +76,7 @@ pub struct ParsedFormat<'a, V: FormatArgument> {
     pub segments: Vec<Segment<'a, V>>,
 }
 
-impl<'a, V: FormatArgument + ConvertToSize> ParsedFormat<'a, V> {
+impl<'a, V: FormatArgument> ParsedFormat<'a, V> {
     /// Parses the formatting string, using given positional and named arguments. Does not perform
     /// any formatting. It just parses the formatting string, validates that all the arguments are
     /// present, and that each argument supports the requested format.
@@ -102,27 +102,10 @@ impl<'a, V: FormatArgument> fmt::Display for ParsedFormat<'a, V> {
     }
 }
 
-/// A type conversion into `usize` that might fail. Like `TryInto<usize>`, but does not consume
-/// `self`. The parser needs this trait to support formats whose width or precision use "dollar
-/// syntax". For more information about these, see [std::fmt].
-pub trait ConvertToSize {
-    /// Tries perform the conversion.
-    fn convert(&self) -> Result<usize, ()>;
-}
-
-impl<T> ConvertToSize for T
-where
-    for<'t> &'t T: TryInto<usize, Error = ()>,
-{
-    fn convert(&self) -> Result<usize, ()> {
-        self.try_into()
-    }
-}
-
 /// A specifier component that can be parsed from the corresponding part of the formatting string.
 trait Parseable<'m, V, S>
 where
-    V: FormatArgument + ConvertToSize,
+    V: FormatArgument,
     S: ArgumentSource<V>,
     Self: Sized,
 {
@@ -131,7 +114,7 @@ where
 
 impl<'m, V, S, T> Parseable<'m, V, S> for T
 where
-    V: FormatArgument + ConvertToSize,
+    V: FormatArgument,
     S: ArgumentSource<V>,
     T: Sized + TryFrom<&'m str, Error = ()>,
 {
@@ -144,7 +127,7 @@ where
 /// formatting string, looks up the corresponding argument and tries to convert it to `usize`.
 fn parse_size<'m, V, S>(text: &str, value_src: &S) -> Result<usize, ()>
 where
-    V: FormatArgument + ConvertToSize,
+    V: FormatArgument,
     S: ArgumentSource<V>,
 {
     if text.ends_with('$') {
@@ -156,7 +139,7 @@ where
         } else {
             value_src.lookup_argument_by_name(text)
         };
-        value.ok_or(()).and_then(ConvertToSize::convert)
+        value.ok_or(()).and_then(FormatArgument::to_usize)
     } else {
         text.parse().map_err(|_| ())
     }
@@ -164,7 +147,7 @@ where
 
 impl<'m, V, S> Parseable<'m, V, S> for Width
 where
-    V: FormatArgument + ConvertToSize,
+    V: FormatArgument,
     S: ArgumentSource<V>,
 {
     fn parse(capture: Option<Match<'m>>, value_src: &mut S) -> Result<Self, ()> {
@@ -177,7 +160,7 @@ where
 
 impl<'m, V, S> Parseable<'m, V, S> for Precision
 where
-    V: FormatArgument + ConvertToSize,
+    V: FormatArgument,
     S: ArgumentSource<V>,
 {
     fn parse(capture: Option<Match<'m>>, value_src: &mut S) -> Result<Self, ()> {
@@ -186,7 +169,7 @@ where
             "*" => value_src
                 .next_argument()
                 .ok_or(())
-                .and_then(ConvertToSize::convert)
+                .and_then(FormatArgument::to_usize)
                 .map(|precision| Precision::Exactly { precision }),
             s @ _ => parse_size(s, value_src).map(|precision| Precision::Exactly { precision }),
         }
@@ -211,7 +194,7 @@ macro_rules! SPEC_REGEX_FRAG {
 
 fn parse_specifier_captures<V, S>(captures: &Captures, value_src: &mut S) -> Result<Specifier, ()>
 where
-    V: FormatArgument + ConvertToSize,
+    V: FormatArgument,
     S: ArgumentSource<V>,
 {
     Ok(Specifier {
@@ -229,7 +212,7 @@ where
 /// argument specification `{foo:#X}`, this function would parse only the `#X` part.
 pub fn parse_specifier<V, S>(spec_str: &str, value_src: &mut S) -> Result<Specifier, ()>
 where
-    V: FormatArgument + ConvertToSize,
+    V: FormatArgument,
     S: ArgumentSource<V>,
 {
     use lazy_static::lazy_static;
@@ -248,7 +231,7 @@ where
 /// An iterator of `Segment`s that correspond to the parts of the formatting string being parsed.
 pub struct Parser<'p, V, P, N>
 where
-    V: FormatArgument + ConvertToSize,
+    V: FormatArgument,
     P: PositionalArguments<'p, V> + ?Sized,
     N: NamedArguments<V>,
 {
@@ -261,7 +244,7 @@ where
 
 impl<'p, V, P, N> Parser<'p, V, P, N>
 where
-    V: FormatArgument + ConvertToSize,
+    V: FormatArgument,
     P: PositionalArguments<'p, V> + ?Sized,
     N: NamedArguments<V>,
 {
@@ -372,7 +355,7 @@ where
 
 impl<'p, V, P, N> ArgumentSource<V> for Parser<'p, V, P, N>
 where
-    V: FormatArgument + ConvertToSize,
+    V: FormatArgument,
     P: PositionalArguments<'p, V> + ?Sized,
     N: NamedArguments<V>,
 {
@@ -391,7 +374,7 @@ where
 
 impl<'p, V, P, N> Iterator for Parser<'p, V, P, N>
 where
-    V: FormatArgument + ConvertToSize,
+    V: FormatArgument,
     P: PositionalArguments<'p, V> + ?Sized,
     N: NamedArguments<V>,
 {
