@@ -295,7 +295,7 @@ where
                     r"(?x)
                         ^
                         \{
-                            (?:(?P<index>\d+)|(?P<name>[[:alpha:]][[:alnum:]]*))?
+                            (?:(?P<index>\d+)|(?P<name>[\p{XID_Start}_][\p{XID_Continue}]*))?
                             (?:
                                 :
                     ",

@@ -142,6 +142,23 @@ fn missing_asterisk_precision() {
 }
 
 #[test]
+fn named_argument_validity() {
+    let mut map = HashMap::new();
+    map.insert("ascii_identifier".to_string(), Variant::Int(42));
+    map.insert("_leading_underscore".to_string(), Variant::Int(4242));
+    map.insert("уникод".to_string(), Variant::Float(42.042));
+    map.insert("0leading_digit".to_string(), Variant::Int(-42));
+    map.insert("invalid/character".to_string(), Variant::Float(-42.042));
+
+    assert!(parse("{ascii_identifier}", &NoPositionalArguments, &map).is_ok());
+    assert!(parse("{_leading_underscore}", &NoPositionalArguments, &map).is_ok());
+    assert!(parse("{уникод}", &NoPositionalArguments, &map).is_ok());
+
+    assert_eq!(Err(0), parse("{0leading_digit}", &NoPositionalArguments, &map));
+    assert_eq!(Err(0), parse("{invalid/character}", &NoPositionalArguments, &map));
+}
+
+#[test]
 fn parse_specifier_smoke_test() {
     struct NoValues;
     impl ArgumentSource<Variant> for NoValues {
